@@ -86,11 +86,12 @@ const init = async () => {
     const { secrets, keyFilePath } = await loadSecrets();
 
     // Initialize PubSub
-    console.log('Initializing PubSub client and subscription...');
+    console.log('\n=== Initializing PubSub Client ===');
     
     const subscriptionName = process.env.PUBSUB_SUBSCRIPTION_NAME || 'CRM-tasks';
     console.log(`Using subscription name: ${subscriptionName}`);
-    
+    console.log(`Project ID: ${secrets.GOOGLE_CLOUD_PROJECT_ID}`);
+
     pubSubClient = new PubSub({
       projectId: secrets.GOOGLE_CLOUD_PROJECT_ID,
       keyFilename: keyFilePath
@@ -99,13 +100,31 @@ const init = async () => {
     // Get subscription
     subscription = pubSubClient.subscription(subscriptionName);
     
+    // Verify subscription access
+    try {
+      console.log('Verifying subscription access...');
+      const [exists] = await subscription.exists();
+      if (!exists) {
+        throw new Error(`Subscription ${subscriptionName} does not exist`);
+      }
+      console.log('✓ Subscription access verified');
+    } catch (error) {
+      console.error('✗ Subscription access error:', error);
+      throw new Error(`PubSub subscription access denied. Please ensure the service account has the following roles:
+        - roles/pubsub.subscriber
+        - roles/pubsub.publisher
+        - Verify the subscription ${subscriptionName} exists
+        Error details: ${error.message}`);
+    }
+    
     // Listen for messages
     subscription.on('message', messageHandler);
     subscription.on('error', error => {
       console.error('PubSub subscription error:', error);
     });
 
-    console.log(`PubSub subscription '${subscriptionName}' initialized successfully`);
+    console.log('✓ PubSub subscription initialized successfully');
+    console.log('=== PubSub Initialization Complete ===\n');
 
     // Initialize sheets service
     sheetsService.initialize(keyFilePath, secrets.SHEETS_ID_FREE_REPORTS_LOG);

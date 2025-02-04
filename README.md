@@ -12,6 +12,12 @@ This service is part of a microservices architecture where:
 
 ## Core Features
 
+### Message Processing
+- Handles PubSub messages for customer communications
+- Processes screener notifications
+- Manages analysis completion notifications
+- Coordinates email campaign triggers
+
 ### Email Communications
 - Professional HTML email templates
 - Automated email campaign management
@@ -122,27 +128,13 @@ Configure the following secrets in Google Cloud Secret Manager:
 - `PUBSUB_SUBSCRIPTION_NAME`
 - `GOOGLE_CLOUD_PROJECT_ID`
 
-## PubSub Setup
-
-1. Create the topic:
-```bash
-gcloud pubsub topics create CRM-tasks
-```
-
-2. Create push subscription:
-```bash
-gcloud pubsub subscriptions create CRM-tasks \
-  --topic=CRM-tasks \
-  --push-endpoint=https://crm-856401495068.us-central1.run.app/push-handler \
-  --ack-deadline=10
-```
-
 ## Development
 
 1. Set up Google Cloud project and enable required APIs:
    - Cloud PubSub
    - Secret Manager
    - Sheets API
+   - SendGrid API
 
 2. Install dependencies:
 ```bash
@@ -153,10 +145,9 @@ npm install
 ```bash
 npm start
 ```
+The service will start on port 8080 and begin processing messages.
 
-The service will start listening for PubSub messages on port 8080.
-
-## Docker Support
+## Deployment
 
 Build and run using Docker:
 
