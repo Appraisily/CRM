@@ -4,13 +4,18 @@ class MessageHandler {
   async handleMessage(message) {
     try {
       const data = typeof message.data === 'string' ? 
-        JSON.parse(message.data) : 
+        JSON.parse(message.data) :
         JSON.parse(message.data.toString());
+
+      // Map message format to expected type
+      if (data.crmProcess === 'screenerNotification') {
+        data.type = 'SCREENER_NOTIFICATION';
+      }
 
       console.log('Received message:', {
         type: data.type,
         sessionId: data.sessionId,
-        email: data.email ? '***@***.***' : undefined
+        email: data.customer?.email ? '***@***.***' : undefined
       });
 
       let success = false;
@@ -28,7 +33,14 @@ class MessageHandler {
           success = true;
           break;
         case 'SCREENER_NOTIFICATION':
-          await emailService.handleScreenerNotification(data);
+          const result = await emailService.handleScreenerNotification({
+            customer: data.customer,
+            sessionId: data.sessionId,
+            metadata: data.metadata,
+            timestamp: data.timestamp,
+            origin: data.origin
+          });
+          success = result.success;
           success = true;
           break;
         default:
@@ -79,12 +91,15 @@ class MessageHandler {
       // Add message type from attributes if available
       if (message.attributes && message.attributes.type) {
         data.type = message.attributes.type;
+      } else if (data.crmProcess === 'screenerNotification') {
+        data.type = 'SCREENER_NOTIFICATION';
       }
 
       console.log('Received push message:', {
         type: data.type,
         sessionId: data.sessionId,
-        timestamp: data.timestamp
+        timestamp: data.timestamp,
+        process: data.crmProcess
       });
 
       const success = await this.handleMessage({ data: JSON.stringify(data) });
