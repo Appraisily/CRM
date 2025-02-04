@@ -7,52 +7,24 @@ class MessageHandler {
         JSON.parse(message.data) :
         JSON.parse(message.data.toString());
 
-      // Map message format to expected type
-      if (data.crmProcess === 'screenerNotification') {
-        data.type = 'SCREENER_NOTIFICATION';
+      if (data.crmProcess !== 'screenerNotification') {
+        console.warn('Unknown message type:', data.crmProcess);
+        return false;
       }
 
-      console.log('Received message:', {
-        type: data.type,
+      const result = await emailService.handleScreenerNotification({
+        customer: data.customer,
         sessionId: data.sessionId,
-        email: data.customer?.email ? '***@***.***' : undefined
+        metadata: data.metadata,
+        timestamp: data.timestamp,
+        origin: data.origin
       });
-
-      let success = false;
-      switch (data.type) {
-        case 'ANALYSIS_COMPLETE':
-          await emailService.handleAnalysisComplete(data);
-          success = true;
-          break;
-        case 'GENERATE_OFFER':
-          await emailService.handleGenerateOffer(data);
-          success = true;
-          break;
-        case 'SEND_REPORT':
-          await emailService.handleSendReport(data);
-          success = true;
-          break;
-        case 'SCREENER_NOTIFICATION':
-          const result = await emailService.handleScreenerNotification({
-            customer: data.customer,
-            sessionId: data.sessionId,
-            metadata: data.metadata,
-            timestamp: data.timestamp,
-            origin: data.origin
-          });
-          success = result.success;
-          success = true;
-          break;
-        default:
-          console.warn('Unknown message type:', data.type);
-          success = false;
-      }
 
       // Only call ack/nack if they exist (PubSub pull subscription)
       if (message.ack && typeof message.ack === 'function') {
         message.ack();
       }
-      return success;
+      return result.success;
 
     } catch (error) {
       console.error('Error processing message:', error);
