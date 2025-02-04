@@ -67,49 +67,54 @@ class MessageHandler {
   async handlePushMessage(req, res) {
     try {
       console.log('\n=== Processing PubSub Push Message ===');
-
-      if (!req.body.message) {
+      
+      // Validate request body
+      if (!req.body || !req.body.message) {
         console.error('No message found in request body');
         return res.status(400).send('No message found');
       }
-
+      
       const message = req.body.message;
       if (!message.data) {
         console.error('No data field in message');
         return res.status(400).send('Invalid message format');
       }
-
+      
+      // Decode and parse message data
       let data;
       try {
         const decodedData = Buffer.from(message.data, 'base64').toString();
         data = JSON.parse(decodedData);
+        console.log('Received push message:', {
+          type: data.crmProcess,
+          sessionId: data.sessionId,
+          timestamp: data.timestamp
+        });
       } catch (error) {
         console.error('Error decoding/parsing message data:', error);
         return res.status(400).send('Invalid message data format');
       }
-
-      // Add message type from attributes if available
-      if (message.attributes && message.attributes.type) {
-        data.type = message.attributes.type;
-      } else if (data.crmProcess === 'screenerNotification') {
-        data.type = 'SCREENER_NOTIFICATION';
+      
+      // Validate required fields for screener notification
+      if (data.crmProcess !== 'screenerNotification') {
+        console.log('Unknown message type:', data.crmProcess);
+        return res.status(400).send('Unsupported message type');
       }
-
-      console.log('Received push message:', {
-        type: data.type,
-        sessionId: data.sessionId,
-        timestamp: data.timestamp,
-        process: data.crmProcess
-      });
-
-      const success = await this.handleMessage({ data: JSON.stringify(data) });
+      
+      if (!data.customer?.email || !data.sessionId || !data.metadata) {
+        console.error('Missing required fields in screener notification');
+        return res.status(400).send('Missing required fields');
+      }
+      
+      // Process screener notification
+      const success = await emailService.handleScreenerNotification(data);
       res.status(success ? 204 : 400).send();
-
+      
       console.log('=== Push Message Processing Complete ===\n');
     } catch (error) {
       console.error('Error handling push message:', error);
       console.error('Stack trace:', error.stack);
-
+      
       if (error.message.includes('Invalid') || error.message.includes('Missing')) {
         res.status(400).send(error.message);
       } else {
