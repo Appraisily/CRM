@@ -105,13 +105,11 @@ const init = async () => {
     console.log(`Using subscription name: ${subscriptionName}`);
     console.log(`Full subscription path: projects/${secrets.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/${subscriptionName}`);
 
+    // Initialize PubSub client without keyFilename
     pubSubClient = new PubSub({
       projectId: secrets.GOOGLE_CLOUD_PROJECT_ID,
-      keyFilename: keyFilePath,
-      grpc: {
-        'grpc.keepalive_time_ms': 30000,
-        'grpc.keepalive_timeout_ms': 10000
-      }
+      // Using Application Default Credentials instead of keyfile
+      // The service account already has the necessary permissions
     });
 
     // Get subscription
