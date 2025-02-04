@@ -46,52 +46,78 @@ This service is part of a microservices architecture where:
 
 ## Screener Notification Process
 
-When a screener notification message is received, the service follows this exact process:
+When a screener notification message is received via PubSub, the service follows this workflow:
 
 ### 1. Message Reception and Validation
 ```json
 {
   "crmProcess": "screenerNotification",
   "customer": {
-    "email": "customer@example.com"
+    "email": "customer@example.com",
+    "name": "Customer Name"
   },
   "origin": "screener",
   "timestamp": 1703187654321,
   "sessionId": "uuid-v4-session-id",
   "metadata": {
-    "analysisId": "uuid-v4-session-id",
-    "source": "analysis-backend",
-    "imageUrl": "https://storage.googleapis.com/bucket-name/sessions/uuid/UserUploadedImage.jpg",
     "originalName": "artwork.jpg",
-    "analyzed": true,
-    "originAnalyzed": false
+    "imageUrl": "https://storage.googleapis.com/bucket-name/sessions/uuid/UserUploadedImage.jpg",
+    "timestamp": 1703187654321,
+    "analyzed": false,
+    "originAnalyzed": false,
+    "size": 1024000,
+    "mimeType": "image/jpeg"
   }
 }
 ```
 
 ### 2. Process Flow
-1. **Message Validation**
-   - Validates message structure and required fields
+1. **Message Reception** (`/push-handler` endpoint)
+   - Receives PubSub push message
    - Decodes base64-encoded message data
-   - Logs receipt of message with key details
+   - Validates message structure and required fields
+   - Routes to `handleScreenerNotification` for processing
 
-2. **Sheet Logging**
-   - Creates or updates row in tracking sheet
-   - Records customer email and submission time
-   - Marks communication type as "Screener"
+2. **Initial Processing** (`handleScreenerNotification`)
+   - Extracts customer email, session ID, and metadata
+   - Begins logging process
+   - Initiates parallel workflows for report and offer
 
-3. **Free Report Generation**
-   - Composes initial analysis report
-   - Uses available metadata
-   - Creates HTML email content
+3. **Sheet Logging** (`sheetsService.updateEmailSubmission`)
+   - Finds or creates row for session ID
+   - Records:
+     - Timestamp
+     - Session ID
+     - Customer email
+     - Communication type ("Screener")
+
+4. **Free Report Generation** (`emailService.sendFreeReport`)
+   - Composes initial analysis report using:
+     - Image metadata
+     - Basic file information
+     - Placeholder for analysis results
+   - Generates HTML email using report template
    - Sends via SendGrid
-   - Updates sheet with delivery status
+   - Updates sheet with report status
 
-4. **Personal Offer Scheduling**
-   - Schedules offer for 1 hour after notification
-   - Generates personalized content via Michelle API
-   - Uses SendGrid's scheduled delivery
-   - Records scheduled status in sheet
+5. **Personal Offer Scheduling** (`emailService.sendPersonalOffer`)
+   - Calculates scheduled time (1 hour after notification)
+   - Generates personalized content via Michelle API using:
+     - Customer information
+     - Image metadata
+     - Session details
+   - Schedules email delivery via SendGrid
+   - Updates sheet with offer status and scheduled time
+
+6. **Status Updates** (`sheetsService`)
+   - Updates free report delivery status
+   - Records offer scheduling status
+   - Logs all timestamps and content hashes
+
+7. **Error Handling**
+   - Catches and logs all errors
+   - Maintains transaction log in sheets
+   - Allows for manual intervention if needed
 
 ### 3. Sheet Structure
 The service maintains a detailed log in Google Sheets with the following columns:
@@ -99,21 +125,35 @@ The service maintains a detailed log in Google Sheets with the following columns
 ```
 A: Timestamp
 B: Session ID
-C: Email
-D: Communication Type
-E: Delivery Status
-F: Delivery Time
-G: Content Type
-H: Content Hash
-I: Offer Status
-J: Offer Time
-K: Offer Content
-L: Free Report Status
-M: Free Report Time
-N: Offer Status
-O: Offer Time
+C: Upload Time
+D: Image URL
+E: Analysis Status
+F: Analysis Time
+G: Origin Status
+H: Origin Time
+I: Email
+J: Email Submission Time
+K: Free Report Status
+L: Free Report Time
+M: Offer Status
+N: Offer Time
+O: Offer Delivered
 P: Offer Content
 ```
+
+### 4. Success Criteria
+A screener notification is considered successfully processed when:
+1. Customer email is logged in sheets
+2. Free report is sent and delivery confirmed
+3. Personal offer is scheduled for future delivery
+4. All status updates are recorded in sheets
+
+### 5. Error Recovery
+If any step fails:
+1. Error is logged with full stack trace
+2. Sheet is updated with failure status
+3. Subsequent steps continue if possible
+4. Failed operations can be retried manually
 
 ## Required Environment Variables
 

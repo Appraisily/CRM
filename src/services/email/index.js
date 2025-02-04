@@ -1,5 +1,8 @@
 const michelleService = require('./MichelleService');
 const sendGridService = require('./SendGridService');
+const sheetsService = require('../sheets');
+const reportComposer = require('../reportComposer');
+const handlers = require('./handlers');
 
 class EmailService {
   constructor() {
@@ -77,24 +80,15 @@ class EmailService {
   }
 
   async handleAnalysisComplete(data) {
-    if (!this.initialized) {
-      throw new Error('Email service not initialized');
-    }
-    // Implementation will be added
+    return handlers.handleAnalysisComplete(data);
   }
 
   async handleGenerateOffer(data) {
-    if (!this.initialized) {
-      throw new Error('Email service not initialized');
-    }
-    // Implementation will be added
+    return handlers.handleGenerateOffer(data);
   }
 
   async handleSendReport(data) {
-    if (!this.initialized) {
-      throw new Error('Email service not initialized');
-    }
-    // Implementation will be added
+    return handlers.handleSendReport(data);
   }
 
   async handleScreenerNotification(data) {
@@ -102,58 +96,141 @@ class EmailService {
       throw new Error('Email service not initialized');
     }
 
-    console.log('\n=== Starting Screener Notification Process ===');
-    const { customer, sessionId, metadata, timestamp } = data;
-    
+    let processStatus = {
+      emailLogged: false,
+      reportSent: false,
+      offerScheduled: false
+    };
+
     try {
-      // Log email submission to sheets
-      await sheetsService.updateEmailSubmission(sessionId, customer.email);
-      console.log('✓ Email logged to sheets');
-
-      // Generate and send free report
-      const reportHtml = reportComposer.composeAnalysisReport(metadata, {
-        visualSearch: null,
-        originAnalysis: null,
-        detailedAnalysis: null
-      });
-      
-      await this.sendFreeReport(customer.email, reportHtml);
-      console.log('✓ Free report sent');
-
-      // Update free report status in sheets
-      await sheetsService.updateFreeReportStatus(sessionId, true);
-      console.log('✓ Free report status updated');
-
-      // Schedule personal offer for 1 hour later
-      const scheduledTime = timestamp + (60 * 60 * 1000); // 1 hour from notification time
-      
-      const personalOffer = await this.sendPersonalOffer(
-        customer.email,
-        'Special Professional Appraisal Offer',
-        {
-          sessionId,
-          metadata,
-          detailedAnalysis: null,
-          visualSearch: null,
-          originAnalysis: null
-        },
-        scheduledTime
-      );
-
-      if (personalOffer?.success) {
-        await sheetsService.updateOfferStatus(
-          sessionId,
-          true,
-          personalOffer.content || 'No content available',
-          scheduledTime
-        );
-        console.log('✓ Personal offer scheduled');
+      // Validate required data
+      if (!data?.customer?.email || !data.sessionId || !data.metadata) {
+        throw new Error('Missing required fields in screener notification data');
       }
 
-      console.log('=== Screener Notification Process Complete ===\n');
+      console.log('\n=== Starting Screener Notification Process ===');
+      const { customer, sessionId, metadata, timestamp } = data;
+      const notificationTime = timestamp || Date.now();
+
+      try {
+        // Step 3: Sheet Logging
+        await sheetsService.updateEmailSubmission(
+          sessionId,
+          customer.email,
+          notificationTime,
+          'Screener'
+        );
+        processStatus.emailLogged = true;
+        console.log('✓ Email submission logged to sheets');
+
+        // Step 4: Free Report Generation and Delivery
+        const reportData = {
+          metadata: {
+            originalName: metadata.originalName,
+            timestamp: notificationTime,
+            imageUrl: metadata.imageUrl,
+            mimeType: metadata.mimeType,
+            size: metadata.size
+          },
+          analysis: {
+            status: 'pending',
+            message: 'Your artwork is being analyzed by our AI system.'
+          }
+        };
+
+        const reportHtml = reportComposer.composeAnalysisReport(
+          reportData.metadata,
+          {
+            visualSearch: null,
+            originAnalysis: null,
+            detailedAnalysis: null
+          }
+        );
+
+        await this.sendFreeReport(customer.email, reportHtml);
+        await sheetsService.updateFreeReportStatus(
+          sessionId,
+          true,
+          notificationTime
+        );
+        processStatus.reportSent = true;
+        console.log('✓ Free report sent and logged');
+
+        // Step 5: Personal Offer Scheduling
+        console.log('\n=== Starting Personal Offer Scheduling ===');
+        const scheduledTime = notificationTime + (60 * 60 * 1000); // 1 hour later
+
+        const personalOffer = await this.sendPersonalOffer(
+          customer.email,
+          'Special Professional Appraisal Offer',
+          {
+            sessionId,
+            metadata,
+            detailedAnalysis: null,
+            visualSearch: null,
+            originAnalysis: null
+          },
+          scheduledTime
+        );
+
+        // Step 6: Status Updates
+        if (personalOffer?.success) {
+          await sheetsService.updateOfferStatus(
+            sessionId,
+            true,
+            personalOffer.content,
+            scheduledTime
+          );
+          processStatus.offerScheduled = true;
+          console.log(`✓ Personal offer scheduled for ${new Date(scheduledTime).toISOString()}`);
+        } else {
+          throw new Error('Failed to schedule personal offer');
+        }
+
+        console.log('=== Screener Notification Process Complete ===\n');
+        return {
+          success: true,
+          processStatus,
+          scheduledTime
+        };
+
+      } catch (error) {
+        // Step 7: Error Handling
+        console.error('\n=== Error in Screener Process ===');
+        console.error('Process Status:', processStatus);
+        console.error('Error:', error.message);
+        console.error('Stack:', error.stack);
+
+        // Log error status to sheets
+        try {
+          if (!processStatus.reportSent) {
+            await sheetsService.updateFreeReportStatus(
+              sessionId,
+              false,
+              notificationTime,
+              error.message
+            );
+          }
+
+          if (!processStatus.offerScheduled) {
+            await sheetsService.updateOfferStatus(
+              sessionId,
+              false,
+              error.message
+            );
+          }
+        } catch (logError) {
+          console.error('Failed to log error status:', logError);
+        }
+
+        return {
+          success: false,
+          processStatus,
+          error: error.message
+        };
+      }
     } catch (error) {
       console.error('✗ Error in screener notification process:', error);
-      console.error('Stack trace:', error.stack);
       throw error;
     }
   }

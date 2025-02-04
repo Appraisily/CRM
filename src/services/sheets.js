@@ -87,7 +87,7 @@ class SheetsService {
     }
   }
 
-  async updateEmailSubmission(sessionId, email) {
+  async updateEmailSubmission(sessionId, email, timestamp, communicationType) {
     if (!this.initialized) {
       throw new Error('Sheets service not initialized');
     }
@@ -96,6 +96,8 @@ class SheetsService {
       console.log('Attempting to update email submission in Google Sheets...');
       
       const rowIndex = await this.findRowBySessionId(sessionId);
+      const currentTime = new Date(timestamp || Date.now()).toISOString();
+
       if (rowIndex === -1) {
         // If row doesn't exist, create a new one
         const response = await this.sheets.spreadsheets.values.get({
@@ -107,20 +109,28 @@ class SheetsService {
         
         await this.sheets.spreadsheets.values.update({
           spreadsheetId: this.sheetsId,
-          range: `Sheet1!A${nextRow}:D${nextRow}`,
+          range: `Sheet1!A${nextRow}:J${nextRow}`,
           valueInputOption: 'USER_ENTERED',
           requestBody: {
             values: [[
-              new Date().toISOString(),  // A: Timestamp
-              sessionId,                 // B: Session ID
-              email,                     // C: Email
-              'Screener'                 // D: Communication Type
+              currentTime,              // A: Timestamp
+              sessionId,                // B: Session ID
+              '',                      // C: Upload Time
+              '',                      // D: Image URL
+              'Pending Analysis',       // E: Analysis Status
+              '',                      // F: Analysis Time
+              'Pending Origin',         // G: Origin Status
+              '',                      // H: Origin Time
+              email,                    // I: Email
+              currentTime               // J: Email Submission Time
             ]]
           }
         });
+        console.log('✓ Created new row in sheets for session');
         return true;
       }
 
+      // Update existing row with email information
       await this.sheets.spreadsheets.values.batchUpdate({
         spreadsheetId: this.sheetsId,
         valueInputOption: 'USER_ENTERED',
@@ -130,7 +140,7 @@ class SheetsService {
               range: `Sheet1!I${rowIndex + 1}:J${rowIndex + 1}`,
               values: [[
                 email,
-                new Date().toISOString()
+                currentTime
               ]]
             }
           ]
@@ -141,11 +151,11 @@ class SheetsService {
       return true;
     } catch (error) {
       console.error('Error updating email submission in sheets:', error);
-      return false;
+      throw error;
     }
   }
 
-  async updateFreeReportStatus(sessionId, success = true) {
+  async updateFreeReportStatus(sessionId, success = true, timestamp, errorMessage = '') {
     if (!this.initialized) {
       throw new Error('Sheets service not initialized');
     }
@@ -156,9 +166,13 @@ class SheetsService {
       const rowIndex = await this.findRowBySessionId(sessionId);
       if (rowIndex === -1) {
         console.error(`Session ID ${sessionId} not found in spreadsheet`);
-        return false;
+        throw new Error(`Session ID ${sessionId} not found in spreadsheet`);
       }
 
+      const currentTime = new Date(timestamp || Date.now()).toISOString();
+      const status = success ? 
+        'Free Report Sent' : 
+        `Free Report Failed: ${errorMessage || 'Unknown error'}`;
       await this.sheets.spreadsheets.values.batchUpdate({
         spreadsheetId: this.sheetsId,
         valueInputOption: 'USER_ENTERED',
@@ -167,8 +181,8 @@ class SheetsService {
             {
               range: `Sheet1!K${rowIndex + 1}:L${rowIndex + 1}`,
               values: [[
-                success ? 'Free Report Sent' : 'Free Report Failed',
-                new Date().toISOString()
+                status,
+                currentTime
               ]]
             }
           ]
@@ -179,7 +193,7 @@ class SheetsService {
       return true;
     } catch (error) {
       console.error('Error updating free report status in sheets:', error);
-      return false;
+      throw error;
     }
   }
 
@@ -197,7 +211,15 @@ class SheetsService {
         return false;
       }
 
-      const status = scheduledTime ? 'Offer Scheduled' : (success ? 'Offer Sent' : 'Offer Failed');
+      let status;
+      if (!success) {
+        status = `Offer Failed: ${offerContent}`; // Use offerContent as error message
+      } else if (scheduledTime) {
+        status = 'Offer Scheduled';
+      } else {
+        status = 'Offer Sent';
+      }
+
       const timestamp = scheduledTime ? new Date(scheduledTime).toISOString() : new Date().toISOString();
 
       await this.sheets.spreadsheets.values.batchUpdate({
@@ -210,7 +232,7 @@ class SheetsService {
               values: [[
                 status,
                 timestamp,
-                success ? 'Pending' : 'No',
+                success ? (scheduledTime ? 'Scheduled' : 'Sent') : 'Failed',
                 offerContent
               ]]
             }
@@ -222,7 +244,7 @@ class SheetsService {
       return true;
     } catch (error) {
       console.error('Error updating offer status in sheets:', error);
-      return false;
+      throw error;
     }
   }
 
