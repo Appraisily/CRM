@@ -86,14 +86,18 @@ const init = async () => {
     const { secrets, keyFilePath } = await loadSecrets();
 
     // Initialize PubSub
-    console.log('Initializing PubSub client...');
+    console.log('Initializing PubSub client and subscription...');
+    
+    const subscriptionName = process.env.PUBSUB_SUBSCRIPTION_NAME || 'CRM-tasks';
+    console.log(`Using subscription name: ${subscriptionName}`);
+    
     pubSubClient = new PubSub({
       projectId: secrets.GOOGLE_CLOUD_PROJECT_ID,
       keyFilename: keyFilePath
     });
 
     // Get subscription
-    subscription = pubSubClient.subscription(secrets.PUBSUB_SUBSCRIPTION_NAME);
+    subscription = pubSubClient.subscription(subscriptionName);
     
     // Listen for messages
     subscription.on('message', messageHandler);
@@ -101,7 +105,7 @@ const init = async () => {
       console.error('PubSub subscription error:', error);
     });
 
-    console.log('PubSub subscription initialized successfully');
+    console.log(`PubSub subscription '${subscriptionName}' initialized successfully`);
 
     // Initialize sheets service
     sheetsService.initialize(keyFilePath, secrets.SHEETS_ID_FREE_REPORTS_LOG);
