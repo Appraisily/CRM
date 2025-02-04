@@ -1,17 +1,10 @@
 const express = require('express');
+const { PubSub } = require('@google-cloud/pubsub');
 const { loadSecrets } = require('./src/config/secrets');
-const cloudServices = require('./src/services/storage');
 const corsMiddleware = require('./src/middleware/cors');
-const uploadRouter = require('./src/routes/upload');
-const encryption = require('./src/services/encryption');
-const visualSearchRouter = require('./src/routes/visualSearch');
-const sessionRouter = require('./src/routes/session');
 const emailService = require('./src/services/email');
-const originAnalysisRouter = require('./src/routes/originAnalysis');
-const emailRouter = require('./src/routes/email');
 const sheetsService = require('./src/services/sheets');
-const fullAnalysisRouter = require('./src/routes/fullAnalysis');
-const healthRouter = require('./src/routes/health');
+const encryption = require('./src/services/encryption');
 
 const app = express();
 
@@ -22,25 +15,93 @@ app.set('trust proxy', 1);
 
 app.use(corsMiddleware);
 
-// Mount routes
-app.use(uploadRouter);
-app.use('/session', sessionRouter);
-app.use(visualSearchRouter);
-app.use(originAnalysisRouter);
-app.use(fullAnalysisRouter);
-app.use(emailRouter);
-app.use('/api/health', healthRouter);
+// PubSub push endpoint
+app.post('/push-handler', async (req, res) => {
+  try {
+    if (!req.body.message) {
+      return res.status(400).send('No message found');
+    }
+
+    const message = req.body.message;
+    const data = JSON.parse(Buffer.from(message.data, 'base64').toString());
+    
+    console.log('Received push message:', {
+      crmProcess: data.crmProcess,
+      sessionId: data.sessionId,
+      origin: data.origin,
+      timestamp: data.timestamp
+    });
+
+    if (data.crmProcess === 'screenerNotification') {
+      await emailService.handleScreenerNotification(data);
+      res.status(204).send();
+    } else {
+      console.warn('Unknown CRM process:', data.crmProcess);
+      res.status(400).send('Unknown CRM process');
+    }
+  } catch (error) {
+    console.error('Error handling push message:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// Initialize PubSub
+let pubSubClient;
+let subscription;
+
+const messageHandler = async (message) => {
+  try {
+    const data = JSON.parse(message.data.toString());
+    console.log('Received message:', {
+      type: data.type,
+      sessionId: data.sessionId,
+      email: data.email ? '***@***.***' : undefined
+    });
+
+    switch (data.type) {
+      case 'ANALYSIS_COMPLETE':
+        await emailService.handleAnalysisComplete(data);
+        break;
+      case 'GENERATE_OFFER':
+        await emailService.handleGenerateOffer(data);
+        break;
+      case 'SEND_REPORT':
+        await emailService.handleSendReport(data);
+        break;
+      default:
+        console.warn('Unknown message type:', data.type);
+    }
+
+    message.ack();
+  } catch (error) {
+    console.error('Error processing message:', error);
+    // Don't ack the message to allow retry
+    message.nack();
+  }
+};
 
 // Initialize application
 const init = async () => {
   try {
     const { secrets, keyFilePath } = await loadSecrets();
-    await cloudServices.initialize(
-      secrets.GOOGLE_CLOUD_PROJECT_ID,
-      keyFilePath,
-      secrets.GCS_BUCKET_NAME,
-      secrets.OPENAI_API_KEY
-    );
+
+    // Initialize PubSub
+    console.log('Initializing PubSub client...');
+    pubSubClient = new PubSub({
+      projectId: secrets.GOOGLE_CLOUD_PROJECT_ID,
+      keyFilename: keyFilePath
+    });
+
+    // Get subscription
+    subscription = pubSubClient.subscription(secrets.PUBSUB_SUBSCRIPTION_NAME);
+    
+    // Listen for messages
+    subscription.on('message', messageHandler);
+    subscription.on('error', error => {
+      console.error('PubSub subscription error:', error);
+    });
+
+    console.log('PubSub subscription initialized successfully');
 
     // Initialize sheets service
     sheetsService.initialize(keyFilePath, secrets.SHEETS_ID_FREE_REPORTS_LOG);
@@ -60,12 +121,24 @@ const init = async () => {
 
     const PORT = process.env.PORT || 8080;
     app.listen(PORT, () => {
-      console.log(`Backend server is running on port ${PORT}`);
+      console.log(`CRM service is running on port ${PORT}`);
     });
   } catch (error) {
     console.error('Failed to initialize application:', error);
+    if (subscription) {
+      subscription.removeListener('message', messageHandler);
+    }
     process.exit(1);
   }
+
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received. Closing subscription...');
+    if (subscription) {
+      subscription.removeListener('message', messageHandler);
+    }
+    process.exit(0);
+  });
 };
 
 init();

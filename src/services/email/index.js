@@ -1,7 +1,5 @@
 const michelleService = require('./MichelleService');
-const analysisService = require('./AnalysisService');
 const sendGridService = require('./SendGridService');
-const cloudServices = require('../storage');
 
 class EmailService {
   constructor() {
@@ -14,9 +12,6 @@ class EmailService {
 
     // Initialize Michelle service
     michelleService.initialize(directApiKey, fromEmail);
-
-    // Initialize Analysis service
-    analysisService.initialize(cloudServices.getBucket());
 
     this.initialized = true;
   }
@@ -79,6 +74,88 @@ class EmailService {
     }
     
     return sendGridService.sendFreeReport(toEmail, reportData);
+  }
+
+  async handleAnalysisComplete(data) {
+    if (!this.initialized) {
+      throw new Error('Email service not initialized');
+    }
+    // Implementation will be added
+  }
+
+  async handleGenerateOffer(data) {
+    if (!this.initialized) {
+      throw new Error('Email service not initialized');
+    }
+    // Implementation will be added
+  }
+
+  async handleSendReport(data) {
+    if (!this.initialized) {
+      throw new Error('Email service not initialized');
+    }
+    // Implementation will be added
+  }
+
+  async handleScreenerNotification(data) {
+    if (!this.initialized) {
+      throw new Error('Email service not initialized');
+    }
+
+    console.log('\n=== Starting Screener Notification Process ===');
+    const { customer, sessionId, metadata, timestamp } = data;
+    
+    try {
+      // Log email submission to sheets
+      await sheetsService.updateEmailSubmission(sessionId, customer.email);
+      console.log('✓ Email logged to sheets');
+
+      // Generate and send free report
+      const reportHtml = reportComposer.composeAnalysisReport(metadata, {
+        visualSearch: null,
+        originAnalysis: null,
+        detailedAnalysis: null
+      });
+      
+      await this.sendFreeReport(customer.email, reportHtml);
+      console.log('✓ Free report sent');
+
+      // Update free report status in sheets
+      await sheetsService.updateFreeReportStatus(sessionId, true);
+      console.log('✓ Free report status updated');
+
+      // Schedule personal offer for 1 hour later
+      const scheduledTime = timestamp + (60 * 60 * 1000); // 1 hour from notification time
+      
+      const personalOffer = await this.sendPersonalOffer(
+        customer.email,
+        'Special Professional Appraisal Offer',
+        {
+          sessionId,
+          metadata,
+          detailedAnalysis: null,
+          visualSearch: null,
+          originAnalysis: null
+        },
+        scheduledTime
+      );
+
+      if (personalOffer?.success) {
+        await sheetsService.updateOfferStatus(
+          sessionId,
+          true,
+          personalOffer.content || 'No content available',
+          scheduledTime
+        );
+        console.log('✓ Personal offer scheduled');
+      }
+
+      console.log('=== Screener Notification Process Complete ===\n');
+    } catch (error) {
+      console.error('✗ Error in screener notification process:', error);
+      console.error('Stack trace:', error.stack);
+      throw error;
+    }
   }
 }
 

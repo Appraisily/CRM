@@ -97,8 +97,28 @@ class SheetsService {
       
       const rowIndex = await this.findRowBySessionId(sessionId);
       if (rowIndex === -1) {
-        console.error(`Session ID ${sessionId} not found in spreadsheet`);
-        return false;
+        // If row doesn't exist, create a new one
+        const response = await this.sheets.spreadsheets.values.get({
+          spreadsheetId: this.sheetsId,
+          range: 'Sheet1!A:A'
+        });
+        
+        const nextRow = (response.data.values || []).length + 1;
+        
+        await this.sheets.spreadsheets.values.update({
+          spreadsheetId: this.sheetsId,
+          range: `Sheet1!A${nextRow}:D${nextRow}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: {
+            values: [[
+              new Date().toISOString(),  // A: Timestamp
+              sessionId,                 // B: Session ID
+              email,                     // C: Email
+              'Screener'                 // D: Communication Type
+            ]]
+          }
+        });
+        return true;
       }
 
       await this.sheets.spreadsheets.values.batchUpdate({
