@@ -1,6 +1,32 @@
 const emailService = require('../email');
+const { PubSub } = require('@google-cloud/pubsub');
+
+const DLQ_TOPIC = process.env.DLQ_TOPIC || 'crm-dlq';
 
 class MessageHandler {
+  constructor() {
+    this.pubsub = new PubSub();
+    this.dlqTopic = this.pubsub.topic(DLQ_TOPIC);
+  }
+
+  async _publishToDLQ(message, error) {
+    try {
+      const dlqMessage = {
+        originalMessage: message.data.toString(),
+        error: {
+          message: error.message,
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      await this.dlqTopic.publish(Buffer.from(JSON.stringify(dlqMessage)));
+      console.log('Message published to DLQ');
+    } catch (dlqError) {
+      console.error('Failed to publish to DLQ:', dlqError);
+    }
+  }
+
   async handleMessage(message) {
     try {
       const data = typeof message.data === 'string' ? 
@@ -28,6 +54,8 @@ class MessageHandler {
 
     } catch (error) {
       console.error('Error processing message:', error);
+      // Publish failed message to DLQ
+      await this._publishToDLQ(message, error);
       // Only call ack/nack if they exist (PubSub pull subscription)
       if (message.nack && typeof message.nack === 'function') {
         message.nack();
@@ -75,6 +103,7 @@ class MessageHandler {
       
       if (!data.customer?.email || !data.sessionId || !data.metadata) {
         console.error('Missing required fields in screener notification');
+        await this._publishToDLQ({ data: message.data }, new Error('Missing required fields'));
         return res.status(400).send('Missing required fields');
       }
       
