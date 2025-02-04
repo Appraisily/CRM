@@ -88,42 +88,101 @@ const init = async () => {
     // Initialize PubSub
     console.log('\n=== Initializing PubSub Client ===');
     
-    const subscriptionName = process.env.PUBSUB_SUBSCRIPTION_NAME || 'CRM-tasks';
+    console.log('PubSub Client Configuration:', {
+      projectId: secrets.GOOGLE_CLOUD_PROJECT_ID,
+      keyFilePath,
+      grpcSettings: {
+        'grpc.keepalive_time_ms': 30000,
+        'grpc.keepalive_timeout_ms': 10000
+      }
+    });
+
+    const subscriptionName = 'CRM-tasks';
+    if (!subscriptionName) {
+      throw new Error('PUBSUB_SUBSCRIPTION_NAME environment variable is required');
+    }
+    
     console.log(`Using subscription name: ${subscriptionName}`);
-    console.log(`Project ID: ${secrets.GOOGLE_CLOUD_PROJECT_ID}`);
+    console.log(`Full subscription path: projects/${secrets.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/${subscriptionName}`);
 
     pubSubClient = new PubSub({
       projectId: secrets.GOOGLE_CLOUD_PROJECT_ID,
-      keyFilename: keyFilePath
+      keyFilename: keyFilePath,
+      grpc: {
+        'grpc.keepalive_time_ms': 30000,
+        'grpc.keepalive_timeout_ms': 10000
+      }
     });
 
     // Get subscription
     subscription = pubSubClient.subscription(subscriptionName);
     
+    console.log('Subscription object created:', {
+      name: subscription.name,
+      projectId: subscription.projectId,
+      metadata: subscription.metadata
+    });
+
     // Verify subscription access
     try {
       console.log('Verifying subscription access...');
       const [exists] = await subscription.exists();
+      console.log('Subscription exists check result:', exists);
+
       if (!exists) {
         throw new Error(`Subscription ${subscriptionName} does not exist`);
       }
       console.log('✓ Subscription access verified');
     } catch (error) {
       console.error('✗ Subscription access error:', error);
+      console.error('Error details:', {
+        code: error.code,
+        details: error.details,
+        metadata: error.metadata
+      });
+
       throw new Error(`PubSub subscription access denied. Please ensure the service account has the following roles:
         - roles/pubsub.subscriber
         - roles/pubsub.publisher
-        - Verify the subscription ${subscriptionName} exists
+        - Verify the subscription ${subscriptionName} exists and is accessible
         Error details: ${error.message}`);
     }
     
     // Listen for messages
-    subscription.on('message', messageHandler);
+    const messageHandlerWithTimeout = async (message) => {
+      const timeout = setTimeout(() => {
+        console.warn('Message processing timeout, nacking message');
+        message.nack();
+      }, 30000); // 30 second timeout
+      
+      try {
+        await messageHandler(message);
+        clearTimeout(timeout);
+      } catch (error) {
+        clearTimeout(timeout);
+        console.error('Error in message handler:', error);
+        message.nack();
+      }
+    };
+    
+    subscription.on('message', messageHandlerWithTimeout);
     subscription.on('error', error => {
-      console.error('PubSub subscription error:', error);
+      console.error('PubSub subscription error:', {
+        error: error.message,
+        code: error.code,
+        details: error.details,
+        metadata: error.metadata,
+        stack: error.stack
+      });
     });
 
     console.log('✓ PubSub subscription initialized successfully');
+    console.log('Subscription details:', {
+      name: subscription.name,
+      projectId: subscription.projectId,
+      isOpen: subscription.isOpen,
+      options: subscription.options
+    });
     console.log('=== PubSub Initialization Complete ===\n');
 
     // Initialize sheets service
@@ -157,10 +216,22 @@ const init = async () => {
   // Graceful shutdown
   process.on('SIGTERM', () => {
     console.log('SIGTERM received. Closing subscription...');
-    if (subscription) {
-      subscription.removeListener('message', messageHandler);
+    try {
+      if (subscription) {
+        subscription.close().then(() => {
+          console.log('Subscription closed successfully');
+          process.exit(0);
+        }).catch(error => {
+          console.error('Error closing subscription:', error);
+          process.exit(1);
+        });
+      } else {
+        process.exit(0);
+      }
+    } catch (error) {
+      console.error('Error during shutdown:', error);
+      process.exit(1);
     }
-    process.exit(0);
   });
 };
 
