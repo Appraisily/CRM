@@ -1,6 +1,7 @@
 const express = require('express');
 const { loadSecrets } = require('./src/config/secrets');
 const corsMiddleware = require('./src/middleware/cors');
+const cloudServices = require('./src/services/storage');
 const emailService = require('./src/services/email');
 const sheetsService = require('./src/services/sheets');
 const encryption = require('./src/services/encryption');
@@ -23,6 +24,14 @@ app.post('/push-handler', messageHandler.handlePushMessage.bind(messageHandler))
 const init = async () => {
   try {
     const { secrets, keyFilePath } = await loadSecrets();
+
+    // Initialize cloud storage service
+    await cloudServices.initialize(
+      secrets.GOOGLE_CLOUD_PROJECT_ID,
+      keyFilePath,
+      secrets.GCS_BUCKET_NAME,
+      secrets.OPENAI_API_KEY
+    );
 
     // Initialize PubSub service
     await pubSubService.initialize(
