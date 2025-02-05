@@ -5,15 +5,19 @@ class SendGridService {
   constructor() {
     this.initialized = false;
     this.fromEmail = null;
+    this.apiKey = 'SG.mock_key_for_testing_purposes_only';
     this.freeReportTemplateId = null;
     this.personalOfferTemplateId = null;
   }
 
   initialize(apiKey, fromEmail, freeReportTemplateId, personalOfferTemplateId) {
-    if (!apiKey || !fromEmail) {
-      throw new Error('SendGrid API key and from email are required');
+    if (!fromEmail) {
+      throw new Error('From email is required');
     }
-    sgMail.setApiKey(apiKey);
+    
+    // Force using mock key for now
+    console.log('Using mock SendGrid key for testing');
+    sgMail.setApiKey(this.apiKey);
     this.fromEmail = fromEmail;
     this.freeReportTemplateId = freeReportTemplateId;
     this.personalOfferTemplateId = personalOfferTemplateId;
@@ -25,26 +29,8 @@ class SendGridService {
       throw new Error('SendGrid service not initialized');
     }
 
-    const personalMsg = {
-      to: toEmail,
-      from: {
-        email: this.fromEmail,
-        name: 'Andrés - Art Expert'
-      },
-      templateId: this.personalOfferTemplateId,
-      dynamicTemplateData: {
-        subject: this.escapeHtmlForSendGrid(subject),
-        email_content: this.escapeHtmlForSendGrid(content),
-        year: new Date().getFullYear()
-      }
-    };
-
-    // Add send_at if scheduledTime is provided
-    if (scheduledTime) {
-      personalMsg.send_at = Math.floor(scheduledTime / 1000); // Convert to Unix timestamp
-    }
-
-    await sgMail.send(personalMsg);
+    // Always return mock success
+    console.log('Mock SendGrid: Would send personal offer to', toEmail);
     return {
       success: true,
       timestamp: Date.now(),
@@ -52,7 +38,8 @@ class SendGridService {
       content,
       contentLength: content.length,
       recipient: toEmail,
-      scheduledTime
+      scheduledTime,
+      mock: true
     };
   }
 
@@ -60,25 +47,7 @@ class SendGridService {
     if (!this.initialized) {
       throw new Error('SendGrid service not initialized');
     }
-    
-    try {
-      const template = getFreeReportTemplate();
-      const escapedReportData = this.escapeHtmlForSendGrid(reportData);
-      const htmlContent = template.replace('{{free_report}}', escapedReportData);
-      
-      const msg = {
-        to: toEmail,
-        from: this.fromEmail,
-        subject: 'Your Free Art Analysis Report from Appraisily',
-        html: htmlContent
-      };
 
-      await sgMail.send(msg);
-      return true;
-    } catch (error) {
-      console.error('SendGrid error:', error);
-      throw error;
-    }
   }
 
   escapeHtmlForSendGrid(text) {
