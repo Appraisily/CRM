@@ -7,7 +7,6 @@ class PubSubService {
     this.client = null;
     this.subscription = null;
     this.messageHandler = null;
-    this.dlqTopic = null;
     this.logger = new Logger('PubSub Service');
   }
 
@@ -33,10 +32,6 @@ class PubSubService {
         throw new InitializationError(`Subscription ${subscriptionName} does not exist`);
       }
 
-      // Initialize DLQ topic
-      const DLQ_TOPIC = process.env.DLQ_TOPIC || 'crm-dlq';
-      this.dlqTopic = this.client.topic(DLQ_TOPIC);
-      
       // Set up message handling with timeout
       this.subscription.on('message', this._handleMessageWithTimeout.bind(this));
       this.subscription.on('error', this._handleError.bind(this));
@@ -90,17 +85,8 @@ class PubSubService {
 
   async publishToDLQ(message, error) {
     try {
-      const dlqMessage = {
-        originalMessage: message.data.toString(),
-        error: {
-          message: error.message,
-          stack: error.stack,
-          timestamp: new Date().toISOString()
-        }
-      };
-
-      await this.dlqTopic.publish(Buffer.from(JSON.stringify(dlqMessage)));
-      this.logger.success('Message published to DLQ');
+      // DLQ handling disabled
+      this.logger.info('DLQ handling is disabled');
     } catch (dlqError) {
       this.logger.error('Failed to publish to DLQ', dlqError);
     }
