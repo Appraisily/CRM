@@ -1,5 +1,4 @@
 const { Storage } = require('@google-cloud/storage');
-const vision = require('@google-cloud/vision');
 const openai = require('./openai');
 const Logger = require('../utils/logger');
 const { InitializationError } = require('../utils/errors');
@@ -8,7 +7,6 @@ class CloudServices {
   constructor() {
     this.storage = null;
     this.bucket = null;
-    this.visionClient = null;
     this.logger = new Logger('Cloud Services');
   }
 
@@ -32,13 +30,6 @@ class CloudServices {
       }
       this.logger.success(`Bucket '${bucketName}' exists and is accessible`);
 
-      // Initialize Vision client
-      this.logger.info('Initializing Google Vision client');
-      this.visionClient = new vision.ImageAnnotatorClient({
-        projectId,
-        keyFilename: keyFilePath,
-      });
-      this.logger.success('Google Vision client initialized');
       // Initialize OpenAI client
       this.logger.info('Initializing OpenAI client');
       openai.initialize(openaiApiKey);
@@ -53,10 +44,6 @@ class CloudServices {
 
   getBucket() {
     return this.bucket;
-  }
-
-  getVisionClient() {
-    return this.visionClient;
   }
 }
 
