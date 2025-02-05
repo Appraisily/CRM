@@ -70,6 +70,7 @@ class MessageHandler {
       const validation = validateScreenerNotification(data);
       if (!validation.isValid) {
         throw new ValidationError(`Invalid message format: ${validation.errors.join(', ')}`);
+      }
 
       const result = await emailService.handleScreenerNotification({
         customer: data.customer,
