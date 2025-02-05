@@ -67,19 +67,19 @@ class MessageHandler {
   async handlePushMessage(req, res) {
     try {
       console.log('\n=== Processing PubSub Push Message ===');
-      
+
       // Validate request body
       if (!req.body || !req.body.message) {
         console.error('No message found in request body');
         return res.status(400).send('No message found');
       }
-      
+
       const message = req.body.message;
       if (!message.data) {
         console.error('No data field in message');
         return res.status(400).send('Invalid message format');
       }
-      
+
       // Decode and parse message data
       let data;
       try {
@@ -94,33 +94,50 @@ class MessageHandler {
         console.error('Error decoding/parsing message data:', error);
         return res.status(400).send('Invalid message data format');
       }
-      
+
       // Validate required fields for screener notification
       if (data.crmProcess !== 'screenerNotification') {
         console.log('Unknown message type:', data.crmProcess);
         return res.status(400).send('Unsupported message type');
       }
-      
+
       if (!data.customer?.email || !data.sessionId || !data.metadata) {
         console.error('Missing required fields in screener notification');
         await this._publishToDLQ({ data: message.data }, new Error('Missing required fields'));
         return res.status(400).send('Missing required fields');
       }
-      
-      // Process screener notification
-      const success = await emailService.handleScreenerNotification(data);
-      res.status(success ? 204 : 400).send();
-      
+
+      try {
+        // Process screener notification
+        const result = await emailService.handleScreenerNotification(data);
+        
+        if (!result.success) {
+          // If processing failed but didn't throw, send to DLQ
+          await this._publishToDLQ(message, new Error(result.error || 'Processing failed'));
+          res.status(400).send();
+        } else {
+          res.status(204).send();
+        }
+      } catch (processingError) {
+        // If processing threw an error, send to DLQ and return 500
+        console.error('Error processing message:', processingError);
+        await this._publishToDLQ(message, processingError);
+        res.status(500).send('Internal Server Error');
+      }
+
       console.log('=== Push Message Processing Complete ===\n');
     } catch (error) {
       console.error('Error handling push message:', error);
       console.error('Stack trace:', error.stack);
-      
-      if (error.message.includes('Invalid') || error.message.includes('Missing')) {
-        res.status(400).send(error.message);
-      } else {
-        res.status(500).send('Internal Server Error');
+
+      try {
+        // Attempt to publish to DLQ before failing
+        await this._publishToDLQ(req.body.message, error);
+      } catch (dlqError) {
+        console.error('Failed to publish to DLQ:', dlqError);
       }
+
+      res.status(500).send('Internal Server Error');
     }
   }
 }
