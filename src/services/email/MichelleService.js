@@ -3,6 +3,7 @@ const fetch = require('node-fetch');
 class MichelleService {
   constructor() {
     this.apiUrl = 'https://michelle-gmail-856401495068.us-central1.run.app/api/process-message';
+    this.TIMEOUT_MS = 30000; // 30 second timeout
     this.apiKey = null;
     this.fromEmail = null;
     this.maxRetries = 3;
@@ -72,26 +73,33 @@ Now, please produce your final answer **in valid JSON** with the structure:
   async fetchWithRetry(url, options, retryCount = 0) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      const timeout = setTimeout(() => controller.abort(), this.TIMEOUT_MS);
       
-      const response = await fetch(url, { 
-        method: 'HEAD',
-        signal: controller.signal 
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
       });
       
       clearTimeout(timeout);
       
-      if (!response.ok) return false;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       
-      const contentType = response.headers.get('content-type');
-      return contentType && contentType.startsWith('image/');
+      return response;
+
     } catch (error) {
       if (error.name === 'AbortError') {
-        console.warn(`Timeout validating URL: ${url} (exceeded ${TIMEOUT_MS}ms)`);
+        console.warn(`Timeout validating URL: ${url} (exceeded ${this.TIMEOUT_MS}ms)`);
+        if (retryCount < this.maxRetries) {
+          console.log(`Retrying request (${retryCount + 1}/${this.maxRetries})...`);
+          await this.sleep(this.retryDelay);
+          return this.fetchWithRetry(url, options, retryCount + 1);
+        }
       } else {
         console.warn(`Failed to validate URL: ${url}`, error.message);
       }
-      return false;
+      throw error;
     }
   }
 
@@ -122,6 +130,8 @@ Now, please produce your final answer **in valid JSON** with the structure:
     };
 
     console.log('Sending request to Michelle API...');
+    console.log('Request body:', JSON.stringify(requestBody, null, 2));
+
     const response = await this.fetchWithRetry(this.apiUrl, {
       method: 'POST',
       headers: {
@@ -131,7 +141,21 @@ Now, please produce your final answer **in valid JSON** with the structure:
       body: JSON.stringify(requestBody)
     });
 
-    const data = await response.json();
+    console.log('\nMichelle API Raw Response:');
+    console.log('Status:', response.status);
+    console.log('Headers:', response.headers);
+    const responseText = await response.text();
+    console.log('Body:', responseText);
+    console.log('---------------\n');
+
+    // Try to parse the response text as JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (error) {
+      console.error('Failed to parse response as JSON:', error);
+      throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
+    }
     if (!data.success || !data.response || !data.response.text) {
       throw new Error('Invalid response format from Michelle API');
     }
