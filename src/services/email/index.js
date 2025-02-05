@@ -81,8 +81,115 @@ class EmailService {
     if (!this.initialized) {
       throw new Error('Email service not initialized');
     }
+    
+    try {
+      console.log('\n=== Starting Screener Notification Process ===');
+      const { customer, sessionId, metadata, timestamp } = data;
+      const notificationTime = timestamp || Date.now();
 
-    return this.screenerProcessor.process(data);
+      // Log email submission
+      await sheetsService.updateEmailSubmission(
+        sessionId,
+        customer.email,
+        notificationTime,
+        'Screener'
+      );
+      console.log('✓ Email submission logged to sheets');
+
+      // Send free report first
+      console.log('\n=== Sending Free Report ===');
+      // Parse metadata from JSON if it's a string
+      const parsedMetadata = typeof metadata === 'string' ? 
+        JSON.parse(metadata) : 
+        metadata;
+
+      console.log('Parsed metadata:', {
+        originalName: parsedMetadata.originalName,
+        imageUrl: parsedMetadata.imageUrl,
+        mimeType: parsedMetadata.mimeType,
+        size: parsedMetadata.size
+      });
+
+      const reportData = {
+        metadata: {
+          originalName: parsedMetadata.originalName,
+          timestamp: notificationTime,
+          imageUrl: parsedMetadata.imageUrl,
+          mimeType: parsedMetadata.mimeType,
+          size: parsedMetadata.size
+        },
+        analysis: {
+          status: 'pending',
+          message: 'Your artwork is being analyzed by our AI system.'
+        }
+      };
+
+      console.log('Generating report with data:', reportData);
+      const reportHtml = reportComposer.composeAnalysisReport(
+        reportData.metadata,
+        {
+          visualSearch: null,
+          originAnalysis: null,
+          detailedAnalysis: null
+        }
+      );
+      console.log('Generated HTML report length:', reportHtml.length);
+
+      await this.sendFreeReport(customer.email, reportHtml);
+      await sheetsService.updateFreeReportStatus(sessionId, true, notificationTime);
+      console.log('✓ Free report sent and logged');
+
+      // Send personal offer with current time
+      console.log('\n=== Scheduling Personal Offer ===');
+      const currentTime = new Date().toISOString();
+      const personalOffer = await this.sendPersonalOffer(
+        customer.email,
+        null, // Let Michelle's API provide the subject
+        {
+          sessionId,
+          metadata: parsedMetadata,
+          detailedAnalysis: null,
+          visualSearch: null,
+          originAnalysis: null
+        },
+        currentTime
+      );
+
+      if (personalOffer?.success) {
+        await sheetsService.updateOfferStatus(
+          sessionId,
+          true,
+          personalOffer.content,
+          currentTime
+        );
+        console.log(`✓ Personal offer scheduled for ${currentTime}`);
+      }
+
+      console.log('=== Screener Notification Process Complete ===\n');
+      return {
+        success: true,
+        processStatus: {
+          emailLogged: true,
+          reportSent: true,
+          offerScheduled: personalOffer?.success || false
+        },
+        currentTime
+      };
+
+    } catch (error) {
+      console.error('\n=== Error in Screener Process ===');
+      console.error('Error:', error.message);
+      console.error('Stack:', error.stack);
+      return {
+        success: false,
+        processStatus: {
+          emailLogged: false,
+          reportSent: false,
+          offerScheduled: false
+        },
+        error: error.message
+      };
+    }
   }
 }
 

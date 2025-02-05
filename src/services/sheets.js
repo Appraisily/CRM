@@ -93,64 +93,33 @@ class SheetsService {
     }
 
     try {
-      console.log('Attempting to update email submission in Google Sheets...');
+      console.log('Attempting to update email in Google Sheets...');
       
       const rowIndex = await this.findRowBySessionId(sessionId);
-      const currentTime = new Date(timestamp || Date.now()).toISOString();
 
       if (rowIndex === -1) {
-        // If row doesn't exist, create a new one
-        const response = await this.sheets.spreadsheets.values.get({
-          spreadsheetId: this.sheetsId,
-          range: 'Sheet1!A:A'
-        });
-        
-        const nextRow = (response.data.values || []).length + 1;
-        
-        await this.sheets.spreadsheets.values.update({
-          spreadsheetId: this.sheetsId,
-          range: `Sheet1!A${nextRow}:J${nextRow}`,
-          valueInputOption: 'USER_ENTERED',
-          requestBody: {
-            values: [[
-              currentTime,              // A: Timestamp
-              sessionId,                // B: Session ID
-              '',                      // C: Upload Time
-              '',                      // D: Image URL
-              'Pending Analysis',       // E: Analysis Status
-              '',                      // F: Analysis Time
-              'Pending Origin',         // G: Origin Status
-              '',                      // H: Origin Time
-              email,                    // I: Email
-              currentTime               // J: Email Submission Time
-            ]]
-          }
-        });
-        console.log('✓ Created new row in sheets for session');
-        return true;
+        console.error(`Session ID ${sessionId} not found in spreadsheet`);
+        throw new Error(`Session ID ${sessionId} not found in spreadsheet`);
       }
 
-      // Update existing row with email information
+      // Update only the email column (I)
       await this.sheets.spreadsheets.values.batchUpdate({
         spreadsheetId: this.sheetsId,
         valueInputOption: 'USER_ENTERED',
         requestBody: {
           data: [
             {
-              range: `Sheet1!I${rowIndex + 1}:J${rowIndex + 1}`,
-              values: [[
-                email,
-                currentTime
-              ]]
+              range: `Sheet1!I${rowIndex + 1}`,
+              values: [[email]]
             }
           ]
         }
       });
 
-      console.log('Successfully updated email submission in sheets');
+      console.log('✓ Successfully updated email in sheets');
       return true;
     } catch (error) {
-      console.error('Error updating email submission in sheets:', error);
+      console.error('Error updating email in sheets:', error);
       throw error;
     }
   }

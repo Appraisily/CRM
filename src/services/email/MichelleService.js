@@ -73,32 +73,40 @@ Now, please produce your final answer **in valid JSON** with the structure:
   async fetchWithRetry(url, options, retryCount = 0) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), this.TIMEOUT_MS);
+      const timeoutId = setTimeout(() => controller.abort(), this.TIMEOUT_MS);
       
       const response = await fetch(url, {
         ...options,
         signal: controller.signal
       });
       
-      clearTimeout(timeout);
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
+        if (retryCount < this.maxRetries) {
+          console.log(`Request failed with status ${response.status}. Retrying (${retryCount + 1}/${this.maxRetries})...`);
+          await this.sleep(this.retryDelay * (retryCount + 1)); // Exponential backoff
+          return this.fetchWithRetry(url, options, retryCount + 1);
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
       return response;
 
     } catch (error) {
+      console.log(`Attempt ${retryCount + 1} failed:`, error.message);
+
       if (error.name === 'AbortError') {
         console.warn(`Timeout validating URL: ${url} (exceeded ${this.TIMEOUT_MS}ms)`);
-        if (retryCount < this.maxRetries) {
-          console.log(`Retrying request (${retryCount + 1}/${this.maxRetries})...`);
-          await this.sleep(this.retryDelay);
-          return this.fetchWithRetry(url, options, retryCount + 1);
-        }
-      } else {
-        console.warn(`Failed to validate URL: ${url}`, error.message);
       }
+      
+      if (retryCount < this.maxRetries) {
+        console.log(`Retrying request (${retryCount + 1}/${this.maxRetries})...`);
+        await this.sleep(this.retryDelay * (retryCount + 1)); // Exponential backoff
+        return this.fetchWithRetry(url, options, retryCount + 1);
+      }
+
+      console.error(`Failed to complete request after ${this.maxRetries} retries:`, error.message);
       throw error;
     }
   }

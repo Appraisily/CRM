@@ -29,6 +29,10 @@ class SendGridService {
       throw new Error('SendGrid service not initialized');
     }
 
+    if (!subject) {
+      throw new Error('Email subject is required');
+    }
+
     // Always return mock success
     console.log('Mock SendGrid: Would send personal offer to', toEmail);
     return {
@@ -48,6 +52,18 @@ class SendGridService {
       throw new Error('SendGrid service not initialized');
     }
 
+    try {
+      const template = getFreeReportTemplate();
+      const escapedReportData = this.escapeHtmlForSendGrid(reportData);
+      const htmlContent = template.replace('{{free_report}}', escapedReportData);
+      
+      // Always return mock success for now
+      console.log('Mock SendGrid: Would send free report to', toEmail);
+      return true;
+    } catch (error) {
+      console.error('SendGrid error:', error);
+      throw error;
+    }
   }
 
   escapeHtmlForSendGrid(text) {

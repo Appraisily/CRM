@@ -67,19 +67,22 @@ class MessageHandler {
   async handlePushMessage(req, res) {
     try {
       console.log('\n=== Processing PubSub Push Message ===');
-      
+
       // Early validation of request body
       if (!req.body || !req.body.message) {
         console.error('No message found in request body');
         return res.status(400).send('No message found');
       }
 
+      // Early acknowledgment to prevent retries
+      res.status(204).send();
+
       const message = req.body.message;
 
       if (!message.data) {
         console.error('No data field in message');
         await this._publishToDLQ(message, new Error('No data field in message'));
-        return res.status(204).send();
+        return;
       }
 
       // Decode and parse message data
@@ -109,14 +112,12 @@ class MessageHandler {
         }
         
         // Successfully processed
-        res.status(204).send();
         console.log('=== Push Message Processing Complete ===\n');
         
       } catch (processingError) {
         // If processing threw an error, send to DLQ and return 500
         console.error('Error processing message:', processingError);
         await this._publishToDLQ(message, processingError);
-        res.status(204).send();
         console.log('=== Push Message Processing Complete with Errors ===\n');
       }
 
@@ -132,8 +133,6 @@ class MessageHandler {
       } catch (dlqError) {
         console.error('Failed to publish to DLQ:', dlqError);
       }
-      // Always acknowledge the message
-      res.status(204).send();
     }
   }
 }
