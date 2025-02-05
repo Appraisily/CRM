@@ -1,6 +1,7 @@
 const michelleService = require('./MichelleService');
 const sendGridService = require('./SendGridService');
 const analysisClient = require('./AnalysisClient');
+const sheetsService = require('../sheets');
 const ScreenerProcessor = require('./ScreenerProcessor');
 
 class EmailService {

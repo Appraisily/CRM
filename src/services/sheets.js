@@ -63,14 +63,18 @@ class SheetsService {
       // Add new row with upload data
       await this.sheets.spreadsheets.values.update({
         spreadsheetId: this.sheetsId,
-        range: `Sheet1!A${nextRow}:D${nextRow}`,
+        range: `Sheet1!A${nextRow}:H${nextRow}`,
         valueInputOption: 'USER_ENTERED',
         requestBody: {
           values: [[
             new Date().toISOString(),           // A: Timestamp
             sessionId,                          // B: Session ID
             new Date(timestamp).toISOString(),  // C: Upload Time
-            imageUrl                            // D: Image URL
+            imageUrl,                           // D: Image URL
+            'Pending Analysis',                 // E: Analysis Status
+            '',                                // F: Analysis Time
+            'Pending Origin',                   // G: Origin Status
+            ''                                 // H: Origin Time
           ]]
         }
       });
@@ -83,13 +87,92 @@ class SheetsService {
     }
   }
 
-  async updateAnalysisStatus(sessionId, analysisType, results) {
+  async updateEmailSubmission(sessionId, email, timestamp, communicationType) {
     if (!this.initialized) {
       throw new Error('Sheets service not initialized');
     }
 
     try {
-      console.log(`Updating ${analysisType} analysis status in Google Sheets...`);
+      console.log('Attempting to update email in Google Sheets...');
+      
+      const rowIndex = await this.findRowBySessionId(sessionId);
+
+      if (rowIndex === -1) {
+        console.error(`Session ID ${sessionId} not found in spreadsheet`);
+        throw new Error(`Session ID ${sessionId} not found in spreadsheet`);
+      }
+
+      // Update only the email column (I)
+      await this.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: this.sheetsId,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          data: [
+            {
+              range: `Sheet1!I${rowIndex + 1}`,
+              values: [[email]]
+            }
+          ]
+        }
+      });
+
+      console.log('✓ Successfully updated email in sheets');
+      return true;
+    } catch (error) {
+      console.error('Error updating email in sheets:', error);
+      throw error;
+    }
+  }
+
+  async updateFreeReportStatus(sessionId, success = true, timestamp, errorMessage = '') {
+    if (!this.initialized) {
+      throw new Error('Sheets service not initialized');
+    }
+
+    try {
+      console.log('Attempting to update free report status in Google Sheets...');
+      
+      const rowIndex = await this.findRowBySessionId(sessionId);
+      if (rowIndex === -1) {
+        console.error(`Session ID ${sessionId} not found in spreadsheet`);
+        throw new Error(`Session ID ${sessionId} not found in spreadsheet`);
+      }
+
+      const currentTime = new Date(timestamp || Date.now()).toISOString();
+      const status = success ? 
+        'Free Report Sent' : 
+        `Free Report Failed: ${errorMessage || 'Unknown error'}`;
+      await this.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: this.sheetsId,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          data: [
+            {
+              range: `Sheet1!K${rowIndex + 1}:L${rowIndex + 1}`,
+              values: [[
+                status,
+                currentTime
+              ]]
+            }
+          ]
+        }
+      });
+
+      console.log('Successfully updated free report status in sheets');
+      return true;
+    } catch (error) {
+      console.error('Error updating free report status in sheets:', error);
+      throw error;
+    }
+  }
+
+  async updateOfferStatus(sessionId, success = true, offerContent = '', scheduledTime = null) {
+    if (!this.initialized) {
+      throw new Error('Sheets service not initialized');
+    }
+
+    try {
+      console.log('Attempting to update offer status in Google Sheets...');
       
       const rowIndex = await this.findRowBySessionId(sessionId);
       if (rowIndex === -1) {
@@ -97,46 +180,128 @@ class SheetsService {
         return false;
       }
 
-      let range;
-      let values;
-
-      switch (analysisType) {
-        case 'visual':
-          range = `Sheet1!E${rowIndex + 1}:F${rowIndex + 1}`;
-          values = [[
-            'Visual Analysis Complete',
-            new Date().toISOString()
-          ]];
-          break;
-        case 'origin':
-          range = `Sheet1!G${rowIndex + 1}:H${rowIndex + 1}`;
-          values = [[
-            'Origin Analysis Complete',
-            new Date().toISOString()
-          ]];
-          break;
-        case 'detailed':
-          range = `Sheet1!I${rowIndex + 1}:J${rowIndex + 1}`;
-          values = [[
-            'Detailed Analysis Complete',
-            new Date().toISOString()
-          ]];
-          break;
-        default:
-          throw new Error(`Invalid analysis type: ${analysisType}`);
+      let status;
+      if (!success) {
+        status = `Offer Failed: ${offerContent}`; // Use offerContent as error message
+      } else if (scheduledTime) {
+        status = 'Offer Scheduled';
+      } else {
+        status = 'Offer Sent';
       }
 
-      await this.sheets.spreadsheets.values.update({
+      const timestamp = scheduledTime ? new Date(scheduledTime).toISOString() : new Date().toISOString();
+
+      await this.sheets.spreadsheets.values.batchUpdate({
         spreadsheetId: this.sheetsId,
-        range,
         valueInputOption: 'USER_ENTERED',
-        requestBody: { values }
+        requestBody: {
+          data: [
+            {
+              range: `Sheet1!M${rowIndex + 1}:P${rowIndex + 1}`,
+              values: [[
+                status,
+                timestamp,
+                success ? (scheduledTime ? 'Scheduled' : 'Sent') : 'Failed',
+                offerContent
+              ]]
+            }
+          ]
+        }
       });
 
-      console.log(`Successfully updated ${analysisType} analysis status in sheets`);
+      console.log('Successfully updated offer status in sheets');
       return true;
     } catch (error) {
-      console.error(`Error updating ${analysisType} analysis status in sheets:`, error);
+      console.error('Error updating offer status in sheets:', error);
+      throw error;
+    }
+  }
+
+  async updateVisualSearchResults(sessionId, analysisResults, category) {
+    if (!this.initialized) {
+      throw new Error('Sheets service not initialized');
+    }
+
+    try {
+      console.log('Attempting to update visual search results in Google Sheets...');
+      
+      const rowIndex = await this.findRowBySessionId(sessionId);
+      if (rowIndex === -1) {
+        console.error(`Session ID ${sessionId} not found in spreadsheet`);
+        return false;
+      }
+
+      await this.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: this.sheetsId,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          data: [
+            {
+              range: `Sheet1!E${rowIndex + 1}:F${rowIndex + 1}`,
+              values: [[
+                `Analysis Complete - ${category || 'Unknown'}`,
+                new Date().toISOString()
+              ]]
+            }
+          ]
+        }
+      });
+
+      console.log('Successfully updated visual search results in sheets');
+      return true;
+    } catch (error) {
+      console.error('Error updating visual search results in sheets:', error);
+      return false;
+    }
+  }
+
+  async updateDetailedAnalysis(sessionId, detailedAnalysis) {
+    if (!this.initialized) {
+      throw new Error('Sheets service not initialized');
+    }
+
+    try {
+      console.log('Attempting to update detailed analysis in Google Sheets...');
+      
+      const rowIndex = await this.findRowBySessionId(sessionId);
+      if (rowIndex === -1) {
+        console.error(`Session ID ${sessionId} not found in spreadsheet`);
+        return false;
+      }
+
+      // Extract key information from detailed analysis
+      const {
+        maker_analysis = {},
+        age_analysis = {},
+        origin_analysis = {}
+      } = detailedAnalysis || {};
+
+      const analysisInfo = [
+        maker_analysis.creator_name || 'Unknown',
+        age_analysis.estimated_date_range || 'Unknown',
+        origin_analysis.likely_origin || 'Unknown'
+      ].join(' | ');
+
+      await this.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: this.sheetsId,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          data: [
+            {
+              range: `Sheet1!G${rowIndex + 1}:H${rowIndex + 1}`,
+              values: [[
+                `Detailed Analysis Complete - ${analysisInfo}`,
+                new Date().toISOString()
+              ]]
+            }
+          ]
+        }
+      });
+
+      console.log('Successfully updated detailed analysis in sheets');
+      return true;
+    } catch (error) {
+      console.error('Error updating detailed analysis in sheets:', error);
       return false;
     }
   }

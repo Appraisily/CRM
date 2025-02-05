@@ -1,16 +1,62 @@
 const emailService = require('../email');
 const pubSubService = require('../pubsub');
 
+const validateScreenerNotification = (data) => {
+  const requiredFields = {
+    crmProcess: 'string',
+    customer: 'object',
+    sessionId: 'string',
+    metadata: 'object',
+    timestamp: 'number'
+  };
+
+  const errors = [];
+
+  // Check all required fields
+  for (const [field, type] of Object.entries(requiredFields)) {
+    if (!data[field]) {
+      errors.push(`Missing required field: ${field}`);
+    } else if (typeof data[field] !== type) {
+      errors.push(`Invalid type for ${field}: expected ${type}, got ${typeof data[field]}`);
+    }
+  }
+
+  // Additional customer object validation
+  if (data.customer && typeof data.customer === 'object') {
+    if (!data.customer.email) {
+      errors.push('Missing required field: customer.email');
+    } else if (typeof data.customer.email !== 'string') {
+      errors.push('Invalid type for customer.email: expected string');
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+};
+
 class MessageHandler {
   async handleMessage(message) {
     try {
+      console.log('\n=== Processing PubSub Message ===');
+      console.log('Raw message data:', message.data);
+
       const data = typeof message.data === 'string' ? 
         JSON.parse(message.data) :
         JSON.parse(message.data.toString());
 
-      if (data.crmProcess !== 'screenerNotification') {
-        console.warn('Unknown message type:', data.crmProcess);
-        return false;
+      console.log('Parsed message data:', {
+        crmProcess: data.crmProcess,
+        sessionId: data.sessionId,
+        hasCustomer: !!data.customer,
+        hasMetadata: !!data.metadata,
+        timestamp: data.timestamp
+      });
+
+      const validation = validateScreenerNotification(data);
+      if (!validation.isValid) {
+        throw new Error(`Invalid message format: ${validation.errors.join(', ')}`);
       }
 
       const result = await emailService.handleScreenerNotification({
@@ -46,6 +92,7 @@ class MessageHandler {
       // Early validation of request body
       if (!req.body || !req.body.message) {
         console.error('No message found in request body');
+        console.log('Request body:', req.body);
         return res.status(400).send('No message found');
       }
 
@@ -63,6 +110,8 @@ class MessageHandler {
       // Decode and parse message data
       try {
         const decodedData = Buffer.from(message.data, 'base64').toString();
+        console.log('Decoded message data:', decodedData);
+
         const data = JSON.parse(decodedData);
         console.log('Received push message:', {
           type: data.crmProcess,
@@ -70,13 +119,10 @@ class MessageHandler {
           timestamp: data.timestamp
         });
 
-        // Validate required fields for screener notification
-        if (data.crmProcess !== 'screenerNotification') {
-          throw new Error(`Unsupported message type: ${data.crmProcess}`);
-        }
-
-        if (!data.customer?.email || !data.sessionId || !data.metadata) {
-          throw new Error('Missing required fields in screener notification');
+        // Validate message format
+        const validation = validateScreenerNotification(data);
+        if (!validation.isValid) {
+          throw new Error(`Invalid message format: ${validation.errors.join(', ')}`);
         }
 
         // Process screener notification
