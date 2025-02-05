@@ -3,8 +3,9 @@ const { PubSub } = require('@google-cloud/pubsub');
 class PubSubService {
   constructor() {
     this.client = null;
-    this.subscription = null;
+    this.dlqSubscription = null;
     this.messageHandler = null;
+    this.dlqTopic = null;
   }
 
   async initialize(projectId, subscriptionName, messageHandler) {
@@ -20,20 +21,17 @@ class PubSubService {
       // Initialize PubSub client
       this.client = new PubSub({ projectId });
       
-      // Get subscription
-      this.subscription = this.client.subscription(subscriptionName);
-      
-      // Verify subscription access
-      const [exists] = await this.subscription.exists();
-      if (!exists) {
-        throw new Error(`Subscription ${subscriptionName} does not exist`);
-      }
-      
-      // Set up message handling with timeout
-      this.subscription.on('message', this._handleMessageWithTimeout.bind(this));
-      this.subscription.on('error', this._handleError.bind(this));
+      // Initialize DLQ topic and subscription
+      const DLQ_TOPIC = process.env.DLQ_TOPIC || 'crm-dlq';
+      this.dlqTopic = this.client.topic(DLQ_TOPIC);
+      this.dlqSubscription = this.dlqTopic.subscription(`${DLQ_TOPIC}-sub`);
+
+      // Set up DLQ message handling with timeout
+      this.dlqSubscription.on('message', this._handleDLQMessageWithTimeout.bind(this));
+      this.dlqSubscription.on('error', this._handleError.bind(this));
       
       console.log('✓ PubSub service initialized successfully');
+      console.log('✓ DLQ subscription initialized');
       console.log('=== PubSub Initialization Complete ===\n');
     } catch (error) {
       console.error('Failed to initialize PubSub service:', error);
@@ -41,18 +39,19 @@ class PubSubService {
     }
   }
 
-  async _handleMessageWithTimeout(message) {
+  async _handleDLQMessageWithTimeout(message) {
     const timeout = setTimeout(() => {
-      console.warn('Message processing timeout, nacking message');
+      console.warn('DLQ message processing timeout, nacking message');
       message.nack();
     }, 30000); // 30 second timeout
     
     try {
       await this.messageHandler(message);
       clearTimeout(timeout);
+      message.ack();
     } catch (error) {
       clearTimeout(timeout);
-      console.error('Error in message handler:', error);
+      console.error('Error in DLQ message handler:', error);
       message.nack();
     }
   }
@@ -68,14 +67,32 @@ class PubSubService {
   }
 
   async shutdown() {
-    if (this.subscription) {
+    if (this.dlqSubscription) {
       try {
-        await this.subscription.close();
-        console.log('PubSub subscription closed successfully');
+        await this.dlqSubscription.close();
+        console.log('DLQ subscription closed successfully');
       } catch (error) {
-        console.error('Error closing PubSub subscription:', error);
+        console.error('Error closing DLQ subscription:', error);
         throw error;
       }
+    }
+  }
+
+  async publishToDLQ(message, error) {
+    try {
+      const dlqMessage = {
+        originalMessage: message.data.toString(),
+        error: {
+          message: error.message,
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      await this.dlqTopic.publish(Buffer.from(JSON.stringify(dlqMessage)));
+      console.log('Message published to DLQ');
+    } catch (dlqError) {
+      console.error('Failed to publish to DLQ:', dlqError);
     }
   }
 }

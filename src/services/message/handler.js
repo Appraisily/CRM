@@ -1,32 +1,7 @@
 const emailService = require('../email');
-const { PubSub } = require('@google-cloud/pubsub');
-
-const DLQ_TOPIC = process.env.DLQ_TOPIC || 'crm-dlq';
+const pubSubService = require('../pubsub');
 
 class MessageHandler {
-  constructor() {
-    this.pubsub = new PubSub();
-    this.dlqTopic = this.pubsub.topic(DLQ_TOPIC);
-  }
-
-  async _publishToDLQ(message, error) {
-    try {
-      const dlqMessage = {
-        originalMessage: message.data.toString(),
-        error: {
-          message: error.message,
-          stack: error.stack,
-          timestamp: new Date().toISOString()
-        }
-      };
-
-      await this.dlqTopic.publish(Buffer.from(JSON.stringify(dlqMessage)));
-      console.log('Message published to DLQ');
-    } catch (dlqError) {
-      console.error('Failed to publish to DLQ:', dlqError);
-    }
-  }
-
   async handleMessage(message) {
     try {
       const data = typeof message.data === 'string' ? 
@@ -54,8 +29,8 @@ class MessageHandler {
 
     } catch (error) {
       console.error('Error processing message:', error);
-      // Publish failed message to DLQ
-      await this._publishToDLQ(message, error);
+      // Publish failed message to DLQ using PubSub service
+      await pubSubService.publishToDLQ(message, error);
       // Only call ack/nack if they exist (PubSub pull subscription)
       if (message.nack && typeof message.nack === 'function') {
         message.nack();
@@ -81,7 +56,7 @@ class MessageHandler {
 
       if (!message.data) {
         console.error('No data field in message');
-        await this._publishToDLQ(message, new Error('No data field in message'));
+        await pubSubService.publishToDLQ(message, new Error('No data field in message'));
         return;
       }
 
@@ -111,24 +86,21 @@ class MessageHandler {
           throw new Error(result.error || 'Processing failed');
         }
         
-        // Successfully processed
         console.log('=== Push Message Processing Complete ===\n');
         
       } catch (processingError) {
-        // If processing threw an error, send to DLQ and return 500
         console.error('Error processing message:', processingError);
-        await this._publishToDLQ(message, processingError);
+        await pubSubService.publishToDLQ(message, processingError);
         console.log('=== Push Message Processing Complete with Errors ===\n');
       }
 
     } catch (error) {
-      // Handle parsing/decoding errors
       console.error('Error handling push message:', error);
       console.error('Stack trace:', error.stack);
 
       try {
         if (req.body?.message) {
-          await this._publishToDLQ(req.body.message, error);
+          await pubSubService.publishToDLQ(req.body.message, error);
         }
       } catch (dlqError) {
         console.error('Failed to publish to DLQ:', dlqError);
