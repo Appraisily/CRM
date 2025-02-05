@@ -81,6 +81,7 @@ class PubSubService {
   async publishToDLQ(message, error) {
     try {
       const dlqMessage = {
+        retryCount: 0,
         originalMessage: message.data.toString(),
         error: {
           message: error.message,
@@ -93,6 +94,26 @@ class PubSubService {
       console.log('Message published to DLQ');
     } catch (dlqError) {
       console.error('Failed to publish to DLQ:', dlqError);
+    }
+  }
+
+  async republishToDLQ(dlqMessage, error) {
+    try {
+      const parsedMessage = JSON.parse(dlqMessage.data.toString());
+      const newMessage = {
+        ...parsedMessage,
+        retryCount: (parsedMessage.retryCount || 0) + 1,
+        error: {
+          message: error.message,
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      await this.dlqTopic.publish(Buffer.from(JSON.stringify(newMessage)));
+      console.log('Message republished to DLQ with incremented retry count');
+    } catch (dlqError) {
+      console.error('Failed to republish to DLQ:', dlqError);
     }
   }
 }

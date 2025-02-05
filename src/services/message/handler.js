@@ -1,6 +1,8 @@
 const emailService = require('../email');
 const pubSubService = require('../pubsub');
 
+const MAX_DLQ_RETRIES = 3;
+
 const validateScreenerNotification = (data) => {
   const requiredFields = {
     crmProcess: 'string',
@@ -42,9 +44,41 @@ class MessageHandler {
       console.log('\n=== Processing PubSub Message ===');
       console.log('Raw message data:', message.data);
 
-      const data = typeof message.data === 'string' ? 
-        JSON.parse(message.data) :
-        JSON.parse(message.data.toString());
+      // Check if this is a DLQ message
+      let data;
+      const messageStr = message.data.toString();
+      const isDLQMessage = messageStr.includes('originalMessage') && messageStr.includes('error');
+
+      if (isDLQMessage) {
+        try {
+          const dlqData = JSON.parse(messageStr);
+          // Check retry count
+          const retryCount = dlqData.retryCount || 0;
+          if (retryCount >= MAX_DLQ_RETRIES) {
+            console.log(`Message exceeded maximum retry count (${MAX_DLQ_RETRIES}), dropping message`);
+            if (message.ack) message.ack();
+            return false;
+          }
+          // Parse the original message
+          data = JSON.parse(dlqData.originalMessage);
+        } catch (parseError) {
+          console.error('Failed to parse DLQ message:', parseError);
+          if (message.ack) message.ack(); // Drop malformed DLQ messages
+          return false;
+        }
+      } else {
+        try {
+          data = typeof message.data === 'string' ? 
+            JSON.parse(message.data) :
+            JSON.parse(message.data.toString());
+        } catch (parseError) {
+          console.error('Failed to parse message:', parseError);
+          // Only publish to DLQ if this is not already a DLQ message
+          await pubSubService.publishToDLQ(message, parseError);
+          if (message.nack) message.nack();
+          return false;
+        }
+      }
 
       console.log('Parsed message data:', {
         crmProcess: data.crmProcess,
@@ -75,8 +109,15 @@ class MessageHandler {
 
     } catch (error) {
       console.error('Error processing message:', error);
-      // Publish failed message to DLQ using PubSub service
-      await pubSubService.publishToDLQ(message, error);
+      
+      // Only publish to DLQ if this is not already a DLQ message
+      const messageStr = message.data.toString();
+      const isDLQMessage = messageStr.includes('originalMessage') && messageStr.includes('error');
+      
+      if (!isDLQMessage) {
+        await pubSubService.publishToDLQ(message, error);
+      }
+      
       // Only call ack/nack if they exist (PubSub pull subscription)
       if (message.nack && typeof message.nack === 'function') {
         message.nack();
