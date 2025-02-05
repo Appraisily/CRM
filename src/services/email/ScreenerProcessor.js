@@ -1,5 +1,5 @@
 const sheetsService = require('../sheets');
-const reportComposer = require('../reportComposer');
+const cloudServices = require('../storage');
 
 class ScreenerProcessor {
   constructor(emailService) {
@@ -24,36 +24,20 @@ class ScreenerProcessor {
       );
       console.log('✓ Email submission logged to sheets');
 
-      // Parse metadata if needed
-      const parsedMetadata = typeof metadata === 'string' ? 
-        JSON.parse(metadata) : 
-        metadata;
-
-      // Prepare initial report data
-      const reportData = {
-        metadata: {
-          originalName: parsedMetadata.originalName,
-          timestamp: notificationTime,
-          imageUrl: parsedMetadata.imageUrl,
-          mimeType: parsedMetadata.mimeType,
-          size: parsedMetadata.size
-        },
-        analysis: {
-          status: 'pending',
-          message: 'Your artwork is being analyzed by our AI system.'
-        }
-      };
-
-      // Generate and send free report
-      console.log('Generating initial report...');
-      const reportHtml = reportComposer.composeAnalysisReport(
-        reportData.metadata,
-        {
-          visualSearch: null,
-          originAnalysis: null,
-          detailedAnalysis: null
-        }
-      );
+      // Get the report HTML from GCS
+      const bucket = cloudServices.getBucket();
+      const reportFile = bucket.file(`images_free_reports/sessions/${sessionId}/report.html`);
+      
+      console.log(`Fetching report from GCS: images_free_reports/sessions/${sessionId}/report.html`);
+      
+      const [exists] = await reportFile.exists();
+      if (!exists) {
+        throw new Error('Report file not found in GCS');
+      }
+      
+      const [reportContent] = await reportFile.download();
+      const reportHtml = reportContent.toString();
+      console.log('Retrieved HTML report from GCS, length:', reportHtml.length);
 
       await this.emailService.sendFreeReport(customer.email, reportHtml);
       await sheetsService.updateFreeReportStatus(sessionId, true, notificationTime);
@@ -67,7 +51,7 @@ class ScreenerProcessor {
         null, // Let Michelle's API provide the subject
         {
           sessionId,
-          metadata: parsedMetadata,
+          metadata,
           detailedAnalysis: null,
           visualSearch: null,
           originAnalysis: null

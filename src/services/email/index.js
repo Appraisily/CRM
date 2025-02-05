@@ -1,36 +1,38 @@
 const michelleService = require('./MichelleService');
 const sendGridService = require('./SendGridService');
 const analysisClient = require('./AnalysisClient');
+const cloudServices = require('../storage');
 const sheetsService = require('../sheets');
-const ScreenerProcessor = require('./ScreenerProcessor');
+const Logger = require('../../utils/logger');
+const { InitializationError, ProcessingError } = require('../../utils/errors');
 
 class EmailService {
   constructor() {
     this.initialized = false;
-    this.screenerProcessor = null;
+    this.logger = new Logger('Email Service');
   }
 
   initialize(apiKey, fromEmail, freeReportTemplateId, personalOfferTemplateId, personalEmail, directApiKey) {
-    // Initialize SendGrid service
-    sendGridService.initialize(apiKey, fromEmail, freeReportTemplateId, personalOfferTemplateId);
+    try {
+      // Initialize SendGrid service
+      sendGridService.initialize(apiKey, fromEmail, freeReportTemplateId, personalOfferTemplateId);
 
-    // Initialize Michelle service
-    michelleService.initialize(directApiKey, fromEmail);
+      // Initialize Michelle service
+      michelleService.initialize(directApiKey, fromEmail);
 
-    // Initialize screener processor
-    this.screenerProcessor = new ScreenerProcessor(this);
-
-    this.initialized = true;
+      this.initialized = true;
+    } catch (error) {
+      throw new InitializationError(`Failed to initialize email service: ${error.message}`);
+    }
   }
 
   async sendPersonalOffer(toEmail, subject, analysisData, scheduledTime = null) {
     if (!this.initialized) {
-      throw new Error('Email service not initialized');
+      throw new InitializationError('Email service not initialized');
     }
 
-    console.log('\n=== Starting Personal Offer Email Process ===');
-    console.log(`Recipient: ${toEmail}`);
-    console.log('Analysis data available:', {
+    this.logger.info('Starting Personal Offer Email Process', {
+      recipient: toEmail,
       hasDetailedAnalysis: !!analysisData?.detailedAnalysis,
       hasVisualSearch: !!analysisData?.visualSearch,
       hasOriginAnalysis: !!analysisData?.originAnalysis
@@ -63,16 +65,16 @@ class EmailService {
       
       return result;
     } catch (error) {
-      console.error('✗ Error sending personal offer email:', error);
-      throw error;
+      this.logger.error('Error sending personal offer email', error);
+      throw new ProcessingError(`Failed to send personal offer: ${error.message}`);
     } finally {
-      console.log('=== End Personal Offer Email Process ===\n');
+      this.logger.end();
     }
   }
 
   async sendFreeReport(toEmail, reportData) {
     if (!this.initialized) {
-      throw new Error('Email service not initialized');
+      throw new InitializationError('Email service not initialized');
     }
     
     return sendGridService.sendFreeReport(toEmail, reportData);
@@ -80,11 +82,11 @@ class EmailService {
 
   async handleScreenerNotification(data) {
     if (!this.initialized) {
-      throw new Error('Email service not initialized');
+      throw new InitializationError('Email service not initialized');
     }
     
     try {
-      console.log('\n=== Starting Screener Notification Process ===');
+      this.logger.info('Starting Screener Notification Process');
       const { customer, sessionId, metadata, timestamp } = data;
       const notificationTime = timestamp || Date.now();
 
@@ -95,60 +97,39 @@ class EmailService {
         notificationTime,
         'Screener'
       );
-      console.log('✓ Email submission logged to sheets');
+      this.logger.success('Email submission logged to sheets');
 
       // Send free report first
-      console.log('\n=== Sending Free Report ===');
-      // Parse metadata from JSON if it's a string
-      const parsedMetadata = typeof metadata === 'string' ? 
-        JSON.parse(metadata) : 
-        metadata;
-
-      console.log('Parsed metadata:', {
-        originalName: parsedMetadata.originalName,
-        imageUrl: parsedMetadata.imageUrl,
-        mimeType: parsedMetadata.mimeType,
-        size: parsedMetadata.size
-      });
-
-      const reportData = {
-        metadata: {
-          originalName: parsedMetadata.originalName,
-          timestamp: notificationTime,
-          imageUrl: parsedMetadata.imageUrl,
-          mimeType: parsedMetadata.mimeType,
-          size: parsedMetadata.size
-        },
-        analysis: {
-          status: 'pending',
-          message: 'Your artwork is being analyzed by our AI system.'
-        }
-      };
-
-      console.log('Generating report with data:', reportData);
-      const reportHtml = reportComposer.composeAnalysisReport(
-        reportData.metadata,
-        {
-          visualSearch: null,
-          originAnalysis: null,
-          detailedAnalysis: null
-        }
-      );
-      console.log('Generated HTML report length:', reportHtml.length);
+      this.logger.info('Sending Free Report');
+      
+      // Get the report HTML from GCS
+      const bucket = cloudServices.getBucket();
+      const reportFile = bucket.file(`images_free_reports/sessions/${sessionId}/report.html`);
+      
+      console.log(`Fetching report from GCS: images_free_reports/sessions/${sessionId}/report.html`);
+      
+      const [exists] = await reportFile.exists();
+      if (!exists) {
+        throw new ProcessingError('Report file not found in GCS');
+      }
+      
+      const [reportContent] = await reportFile.download();
+      const reportHtml = reportContent.toString();
+      console.log('Retrieved HTML report from GCS, length:', reportHtml.length);
 
       await this.sendFreeReport(customer.email, reportHtml);
       await sheetsService.updateFreeReportStatus(sessionId, true, notificationTime);
-      console.log('✓ Free report sent and logged');
+      this.logger.success('Free report sent and logged');
 
       // Send personal offer with current time
-      console.log('\n=== Scheduling Personal Offer ===');
+      this.logger.info('Scheduling Personal Offer');
       const currentTime = new Date().toISOString();
       const personalOffer = await this.sendPersonalOffer(
         customer.email,
         null, // Let Michelle's API provide the subject
-        {
+        {  
           sessionId,
-          metadata: parsedMetadata,
+          metadata,
           detailedAnalysis: null,
           visualSearch: null,
           originAnalysis: null
@@ -163,10 +144,10 @@ class EmailService {
           personalOffer.content,
           currentTime
         );
-        console.log(`✓ Personal offer scheduled for ${currentTime}`);
+        this.logger.success(`Personal offer scheduled for ${currentTime}`);
       }
 
-      console.log('=== Screener Notification Process Complete ===\n');
+      this.logger.end();
       return {
         success: true,
         processStatus: {
@@ -178,9 +159,8 @@ class EmailService {
       };
 
     } catch (error) {
-      console.error('\n=== Error in Screener Process ===');
-      console.error('Error:', error.message);
-      console.error('Stack:', error.stack);
+      this.logger.error('Error in screener notification process', error);
+      
       return {
         success: false,
         processStatus: {

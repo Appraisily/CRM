@@ -1,7 +1,7 @@
 const emailService = require('../email');
 const pubSubService = require('../pubsub');
-
-const MAX_DLQ_RETRIES = 3;
+const Logger = require('../../utils/logger');
+const { ValidationError } = require('../../utils/errors');
 
 const validateScreenerNotification = (data) => {
   const requiredFields = {
@@ -39,45 +39,24 @@ const validateScreenerNotification = (data) => {
 };
 
 class MessageHandler {
+  constructor() {
+    this.logger = new Logger('Message Handler');
+  }
+
   async handleMessage(message) {
     try {
-      console.log('\n=== Processing PubSub Message ===');
-      console.log('Raw message data:', message.data);
-
-      // Check if this is a DLQ message
+      this.logger.info('Processing PubSub Message');
+      
       let data;
-      const messageStr = message.data.toString();
-      const isDLQMessage = messageStr.includes('originalMessage') && messageStr.includes('error');
-
-      if (isDLQMessage) {
-        try {
-          const dlqData = JSON.parse(messageStr);
-          // Check retry count
-          const retryCount = dlqData.retryCount || 0;
-          if (retryCount >= MAX_DLQ_RETRIES) {
-            console.log(`Message exceeded maximum retry count (${MAX_DLQ_RETRIES}), dropping message`);
-            if (message.ack) message.ack();
-            return false;
-          }
-          // Parse the original message
-          data = JSON.parse(dlqData.originalMessage);
-        } catch (parseError) {
-          console.error('Failed to parse DLQ message:', parseError);
-          if (message.ack) message.ack(); // Drop malformed DLQ messages
-          return false;
-        }
-      } else {
-        try {
-          data = typeof message.data === 'string' ? 
-            JSON.parse(message.data) :
-            JSON.parse(message.data.toString());
-        } catch (parseError) {
-          console.error('Failed to parse message:', parseError);
-          // Only publish to DLQ if this is not already a DLQ message
-          await pubSubService.publishToDLQ(message, parseError);
-          if (message.nack) message.nack();
-          return false;
-        }
+      try {
+        data = typeof message.data === 'string' ? 
+          JSON.parse(message.data) :
+          JSON.parse(message.data.toString());
+      } catch (parseError) {
+        this.logger.error('Failed to parse message', parseError);
+        await pubSubService.publishToDLQ(message, parseError);
+        if (message.nack) message.nack();
+        return false;
       }
 
       console.log('Parsed message data:', {
@@ -90,7 +69,7 @@ class MessageHandler {
 
       const validation = validateScreenerNotification(data);
       if (!validation.isValid) {
-        throw new Error(`Invalid message format: ${validation.errors.join(', ')}`);
+        throw new ValidationError(`Invalid message format: ${validation.errors.join(', ')}`);
       }
 
       const result = await emailService.handleScreenerNotification({
@@ -108,27 +87,22 @@ class MessageHandler {
       return result.success;
 
     } catch (error) {
-      console.error('Error processing message:', error);
-      
-      // Only publish to DLQ if this is not already a DLQ message
-      const messageStr = message.data.toString();
-      const isDLQMessage = messageStr.includes('originalMessage') && messageStr.includes('error');
-      
-      if (!isDLQMessage) {
-        await pubSubService.publishToDLQ(message, error);
-      }
+      this.logger.error('Error processing message', error);
+      await pubSubService.publishToDLQ(message, error);
       
       // Only call ack/nack if they exist (PubSub pull subscription)
       if (message.nack && typeof message.nack === 'function') {
         message.nack();
       }
       throw error;
+    } finally {
+      this.logger.end();
     }
   }
 
   async handlePushMessage(req, res) {
     try {
-      console.log('\n=== Processing PubSub Push Message ===');
+      this.logger.info('Processing PubSub Push Message');
 
       // Early validation of request body
       if (!req.body || !req.body.message) {
@@ -143,7 +117,7 @@ class MessageHandler {
       const message = req.body.message;
 
       if (!message.data) {
-        console.error('No data field in message');
+        this.logger.error('No data field in message');
         await pubSubService.publishToDLQ(message, new Error('No data field in message'));
         return;
       }
@@ -151,7 +125,7 @@ class MessageHandler {
       // Decode and parse message data
       try {
         const decodedData = Buffer.from(message.data, 'base64').toString();
-        console.log('Decoded message data:', decodedData);
+        this.logger.info('Decoded message data:', { data: decodedData });
 
         const data = JSON.parse(decodedData);
         console.log('Received push message:', {
@@ -163,7 +137,7 @@ class MessageHandler {
         // Validate message format
         const validation = validateScreenerNotification(data);
         if (!validation.isValid) {
-          throw new Error(`Invalid message format: ${validation.errors.join(', ')}`);
+          throw new ValidationError(`Invalid message format: ${validation.errors.join(', ')}`);
         }
 
         // Process screener notification
@@ -173,19 +147,19 @@ class MessageHandler {
           throw new Error(result.error || 'Processing failed');
         }
         
-        console.log('=== Push Message Processing Complete ===\n');
+        this.logger.end();
         
       } catch (processingError) {
-        console.error('Error processing message:', processingError);
+        this.logger.error('Error processing message', processingError);
         await pubSubService.publishToDLQ(message, processingError);
-        console.log('=== Push Message Processing Complete with Errors ===\n');
+        this.logger.end();
       }
 
     } catch (error) {
-      console.error('Error handling push message:', error);
-      console.error('Stack trace:', error.stack);
+      this.logger.error('Error handling push message', error);
 
       try {
+        this.logger.info('Attempting to publish to DLQ');
         if (req.body?.message) {
           await pubSubService.publishToDLQ(req.body.message, error);
         }
@@ -193,6 +167,8 @@ class MessageHandler {
         console.error('Failed to publish to DLQ:', dlqError);
       }
     }
+
+    this.logger.end();
   }
 }
 

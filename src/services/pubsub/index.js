@@ -1,18 +1,21 @@
 const { PubSub } = require('@google-cloud/pubsub');
+const Logger = require('../../utils/logger');
+const { InitializationError, ProcessingError } = require('../../utils/errors');
 
 class PubSubService {
   constructor() {
     this.client = null;
-    this.dlqSubscription = null;
+    this.subscription = null;
     this.messageHandler = null;
     this.dlqTopic = null;
+    this.logger = new Logger('PubSub Service');
   }
 
   async initialize(projectId, subscriptionName, messageHandler) {
-    console.log('\n=== Initializing PubSub Service ===');
+    this.logger.info('Initializing PubSub Service');
     
     if (!projectId || !subscriptionName || !messageHandler) {
-      throw new Error('Project ID, subscription name, and message handler are required');
+      throw new InitializationError('Project ID, subscription name, and message handler are required');
     }
 
     this.messageHandler = messageHandler;
@@ -21,29 +24,36 @@ class PubSubService {
       // Initialize PubSub client
       this.client = new PubSub({ projectId });
       
-      // Initialize DLQ topic and subscription
+      // Get subscription
+      this.subscription = this.client.subscription(subscriptionName);
+      
+      // Verify subscription access
+      const [exists] = await this.subscription.exists();
+      if (!exists) {
+        throw new InitializationError(`Subscription ${subscriptionName} does not exist`);
+      }
+
+      // Initialize DLQ topic
       const DLQ_TOPIC = process.env.DLQ_TOPIC || 'crm-dlq';
       this.dlqTopic = this.client.topic(DLQ_TOPIC);
-      this.dlqSubscription = this.dlqTopic.subscription(`${DLQ_TOPIC}-sub`);
-
-      // Set up DLQ message handling with timeout
-      this.dlqSubscription.on('message', this._handleDLQMessageWithTimeout.bind(this));
-      this.dlqSubscription.on('error', this._handleError.bind(this));
       
-      console.log('✓ PubSub service initialized successfully');
-      console.log('✓ DLQ subscription initialized');
-      console.log('=== PubSub Initialization Complete ===\n');
+      // Set up message handling with timeout
+      this.subscription.on('message', this._handleMessageWithTimeout.bind(this));
+      this.subscription.on('error', this._handleError.bind(this));
+      
+      this.logger.success('PubSub service initialized successfully');
+      this.logger.end();
     } catch (error) {
-      console.error('Failed to initialize PubSub service:', error);
+      this.logger.error('Failed to initialize PubSub service', error);
       throw error;
     }
   }
 
-  async _handleDLQMessageWithTimeout(message) {
+  async _handleMessageWithTimeout(message) {
     const timeout = setTimeout(() => {
-      console.warn('DLQ message processing timeout, nacking message');
+      this.logger.error('Message processing timeout, nacking message');
       message.nack();
-    }, 30000); // 30 second timeout
+    }, 30000);
     
     try {
       await this.messageHandler(message);
@@ -51,7 +61,7 @@ class PubSubService {
       message.ack();
     } catch (error) {
       clearTimeout(timeout);
-      console.error('Error in DLQ message handler:', error);
+      this.logger.error('Error in message handler', error);
       message.nack();
     }
   }
@@ -67,13 +77,13 @@ class PubSubService {
   }
 
   async shutdown() {
-    if (this.dlqSubscription) {
+    if (this.subscription) {
       try {
-        await this.dlqSubscription.close();
-        console.log('DLQ subscription closed successfully');
+        await this.subscription.close();
+        this.logger.success('PubSub subscription closed successfully');
       } catch (error) {
-        console.error('Error closing DLQ subscription:', error);
-        throw error;
+        this.logger.error('Error closing PubSub subscription', error);
+        throw new ProcessingError(`Failed to close subscription: ${error.message}`);
       }
     }
   }
@@ -81,7 +91,6 @@ class PubSubService {
   async publishToDLQ(message, error) {
     try {
       const dlqMessage = {
-        retryCount: 0,
         originalMessage: message.data.toString(),
         error: {
           message: error.message,
@@ -91,31 +100,9 @@ class PubSubService {
       };
 
       await this.dlqTopic.publish(Buffer.from(JSON.stringify(dlqMessage)));
-      console.log('Message published to DLQ');
+      this.logger.success('Message published to DLQ');
     } catch (dlqError) {
-      console.error('Failed to publish to DLQ:', dlqError);
-    }
-  }
-
-  async republishToDLQ(dlqMessage, error) {
-    try {
-      const parsedMessage = JSON.parse(dlqMessage.data.toString());
-      const newMessage = {
-        ...parsedMessage,
-        retryCount: (parsedMessage.retryCount || 0) + 1,
-        error: {
-          message: error.message,
-          stack: error.stack,
-          timestamp: new Date().toISOString()
-        }
-      };
-
-      await this.dlqTopic.publish(Buffer.from(JSON.stringify(newMessage)));
-      console.log('Message republished to DLQ with incremented retry count');
-    } catch (dlqError) {
-      console.error('Failed to republish to DLQ:', dlqError);
+      this.logger.error('Failed to publish to DLQ', dlqError);
     }
   }
 }
-
-module.exports = new PubSubService();

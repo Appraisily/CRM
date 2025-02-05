@@ -1,6 +1,8 @@
 const fetch = require('node-fetch');
+const Logger = require('../../utils/logger');
+const { InitializationError, ProcessingError } = require('../../utils/errors');
 
-class MichelleService {
+class MichelseService {
   constructor() {
     this.apiUrl = 'https://michelle-gmail-856401495068.us-central1.run.app/api/process-message';
     this.TIMEOUT_MS = 30000; // 30 second timeout
@@ -8,9 +10,13 @@ class MichelleService {
     this.fromEmail = null;
     this.maxRetries = 3;
     this.retryDelay = 1000; // 1 second
+    this.logger = new Logger('Michelle Service');
   }
 
   initialize(apiKey, fromEmail) {
+    if (!apiKey || !fromEmail) {
+      throw new InitializationError('API key and from email are required');
+    }
     this.apiKey = apiKey;
     this.fromEmail = fromEmail;
   }
@@ -113,11 +119,10 @@ Now, please produce your final answer **in valid JSON** with the structure:
 
   async generateContent(analysisData) {
     if (!this.apiKey || !this.fromEmail) {
-      throw new Error('Michelle service not initialized');
+      throw new InitializationError('Michelle service not initialized');
     }
 
-    console.log('\n=== Michelle API Request Details ===');
-    console.log('Analysis Data:', {
+    this.logger.info('Michelle API Request Details', {
       maker_analysis: analysisData.detailedAnalysis?.maker_analysis || 'Not available',
       origin_analysis: analysisData.detailedAnalysis?.origin_analysis || 'Not available',
       age_analysis: analysisData.detailedAnalysis?.age_analysis || 'Not available',
@@ -126,10 +131,7 @@ Now, please produce your final answer **in valid JSON** with the structure:
     });
 
     const prompt = await this.generatePrompt(analysisData);
-    console.log('\nGenerated Prompt:');
-    console.log('---------------');
-    console.log(prompt);
-    console.log('---------------\n');
+    this.logger.info('Generated Prompt', { prompt });
 
     const requestBody = {
       text: prompt,
@@ -137,53 +139,55 @@ Now, please produce your final answer **in valid JSON** with the structure:
       senderEmail: this.fromEmail
     };
 
-    console.log('Sending request to Michelle API...');
-    console.log('Request body:', JSON.stringify(requestBody, null, 2));
-
-    const response = await this.fetchWithRetry(this.apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': this.apiKey
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    console.log('\nMichelle API Raw Response:');
-    console.log('Status:', response.status);
-    console.log('Headers:', response.headers);
-    const responseText = await response.text();
-    console.log('Body:', responseText);
-    console.log('---------------\n');
-
-    // Try to parse the response text as JSON
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (error) {
-      console.error('Failed to parse response as JSON:', error);
-      throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
-    }
-    if (!data.success || !data.response || !data.response.text) {
-      throw new Error('Invalid response format from Michelle API');
-    }
+    this.logger.info('Sending request to Michelle API', { requestBody });
 
     try {
-      const content = JSON.parse(data.response.text);
-      if (!content.subject || !content.content) {
-        console.error('Invalid content structure:', content);
-        throw new Error('Missing required fields in email content');
+      const response = await this.fetchWithRetry(this.apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': this.apiKey
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      this.logger.info('Michelle API Response Received', { status: response.status });
+      const responseText = await response.text();
+
+      // Try to parse the response text as JSON
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (error) {
+        this.logger.error('Failed to parse response as JSON', error);
+        throw new ProcessingError(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
       }
-      console.log('\nMichelle API Response:');
-      console.log('Subject:', content.subject);
-      console.log('Content Length:', content.content.length, 'characters');
-      console.log('=== End Michelle API Request ===\n');
-      return content;
+
+      if (!data.success || !data.response || !data.response.text) {
+        throw new ProcessingError('Invalid response format from Michelle API');
+      }
+
+      try {
+        const content = JSON.parse(data.response.text);
+        if (!content.subject || !content.content) {
+          this.logger.error('Invalid content structure', { content });
+          throw new ProcessingError('Missing required fields in email content');
+        }
+        this.logger.info('Content Generated Successfully', {
+          subject: content.subject,
+          contentLength: content.content.length
+        });
+        this.logger.end();
+        return content;
+      } catch (error) {
+        this.logger.error('Failed to parse Michelle API response', error);
+        throw new ProcessingError(`Failed to parse Michelle API response: ${error.message}`);
+      }
     } catch (error) {
-      console.error('Failed to parse Michelle API response:', error);
-      throw new Error(`Failed to parse Michelle API response: ${error.message}`);
+      this.logger.error('Error in Michelle API request', error);
+      throw error;
     }
   }
 }
 
-module.exports = new MichelleService();
+module.exports = new MichelseService();
