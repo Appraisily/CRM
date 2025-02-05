@@ -1,10 +1,10 @@
 const express = require('express');
 const { rateLimit } = require('express-rate-limit');
 const validator = require('validator');
-const { validateAndProcessEmail } = require('../services/email/validation');
-const { processAnalysis } = require('../services/email/analysis');
-const { sendEmails } = require('../services/email/delivery');
 const sheetsService = require('../services/sheets');
+const pubsubService = require('../services/pubsub');
+const cloudServices = require('../services/storage');
+const fetch = require('node-fetch');
 
 const router = express.Router();
 
@@ -23,75 +23,197 @@ const limiter = rateLimit({
 router.post('/submit-email', limiter, async (req, res) => {
   try {
     console.log('\n=== Starting Email Submission Process ===');
-    console.log('Request body:', {
-      email: req.body.email ? '***@***.***' : undefined,
-      sessionId: req.body.sessionId
-    });
+    const { email, sessionId } = req.body;
 
-    // Validate request and process email
-    const validationResult = await validateAndProcessEmail(req.body);
-    if (!validationResult.success) {
-      console.log('✗ Validation failed:', validationResult.message);
-      return res.status(400).json(validationResult);
+    // Validate request
+    if (!email || !sessionId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and sessionId are required.'
+      });
     }
 
-    const { email, sessionId, metadata } = validationResult;
+    if (!validator.isEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email format.'
+      });
+    }
+
+    // Get session metadata
+    console.log('Checking session and analysis files...');
+    const bucket = cloudServices.getBucket();
+    const metadataFile = bucket.file(`sessions/${sessionId}/metadata.json`);
+    const [exists] = await metadataFile.exists();
+
+    if (!exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Session not found.'
+      });
+    }
+
+    // Load metadata
+    const [metadataContent] = await metadataFile.download();
+    const metadata = JSON.parse(metadataContent.toString());
+
+    // Check for required analysis files
+    const analysisFile = bucket.file(`sessions/${sessionId}/analysis.json`);
+    const originFile = bucket.file(`sessions/${sessionId}/origin.json`);
+    const detailedFile = bucket.file(`sessions/${sessionId}/detailed.json`);
+
+    const [analysisExists, originExists, detailedExists] = await Promise.all([
+      analysisFile.exists(),
+      originFile.exists(),
+      detailedFile.exists()
+    ]);
+
+    // Get base URL for API calls
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    console.log('✓ Validation successful');
-    console.log('Session metadata updated with email hash');
+    
+    // Trigger missing analyses in sequence
+    if (!analysisExists[0]) {
+      console.log('Visual analysis missing, triggering analysis...');
+      try {
+        const response = await fetch(`${baseUrl}/visual-search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Visual search failed with status ${response.status}`);
+        }
+      } catch (error) {
+        console.error('Failed to perform visual analysis:', error);
+        throw new Error('Failed to complete required visual analysis');
+      }
+    }
 
-    // Immediately log email to sheets (don't await)
-    sheetsService.updateEmailSubmission(sessionId, email)
-      .then(() => console.log('✓ Email logged to sheets'))
-      .catch(error => console.error('✗ Failed to log email to sheets:', error));
+    if (!originExists[0]) {
+      console.log('Origin analysis missing, triggering analysis...');
+      try {
+        const response = await fetch(`${baseUrl}/origin-analysis`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Origin analysis failed with status ${response.status}`);
+        }
+      } catch (error) {
+        console.error('Failed to perform origin analysis:', error);
+        throw new Error('Failed to complete required origin analysis');
+      }
+    }
 
-    // Send immediate success response to client
-    console.log('Sending success response to client');
-    res.json({
-      success: true,
-      message: 'Email submission received. Analysis in progress.',
-      emailHash: metadata.emailHash,
-      submissionTime: metadata.email.submissionTime
+    // Verify all analyses are now complete
+    const [finalAnalysisExists, finalOriginExists] = await Promise.all([
+      bucket.file(`sessions/${sessionId}/analysis.json`).exists(),
+      bucket.file(`sessions/${sessionId}/origin.json`).exists()
+    ]);
+
+    if (!finalAnalysisExists[0] || !finalOriginExists[0]) {
+      throw new Error('Failed to complete all required analyses');
+    }
+
+    if (!detailedExists[0]) {
+      console.log('Detailed analysis missing, triggering analysis...');
+      try {
+        const response = await fetch(`${baseUrl}/full-analysis`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Detailed analysis failed with status ${response.status}`);
+        }
+      } catch (error) {
+        console.error('Failed to perform detailed analysis:', error);
+        throw new Error('Failed to complete required detailed analysis');
+      }
+    }
+
+    // Verify detailed analysis is now complete
+    const [finalDetailedExists] = await bucket.file(`sessions/${sessionId}/detailed.json`).exists();
+    if (!finalDetailedExists) {
+      throw new Error('Failed to complete detailed analysis');
+    }
+
+    // Prepare message for CRM
+    const message = {
+      crmProcess: "screenerNotification",
+      customer: {
+        email: email
+      },
+      sessionId: sessionId,
+      metadata: {
+        originalName: metadata.originalName,
+        imageUrl: metadata.imageUrl,
+        mimeType: metadata.mimeType,
+        size: metadata.size
+      },
+      timestamp: Date.now()
+    };
+
+    // Publish to CRM-tasks topic
+    await pubsubService.publishToCRM(message);
+    console.log('✓ Message published to CRM-tasks');
+
+    // Update Google Sheets with email submission
+    try {
+      const rowIndex = await sheetsService.findRowBySessionId(sessionId);
+      if (rowIndex === -1) {
+        console.warn(`Session ID ${sessionId} not found in spreadsheet`);
+      } else {
+        await sheetsService.sheets.spreadsheets.values.update({
+          spreadsheetId: sheetsService.sheetsId,
+          range: `Sheet1!K${rowIndex + 1}:L${rowIndex + 1}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: {
+            values: [[
+              email,
+              new Date().toISOString()
+            ]]
+          }
+        });
+        console.log('✓ Email submission logged to sheets');
+      }
+    } catch (error) {
+      console.error('Failed to log email submission to sheets:', error);
+      // Don't fail the request if sheets logging fails
+    }
+
+    // Update metadata with email submission
+    metadata.email = {
+      submissionTime: message.timestamp,
+      processed: false
+    };
+
+    await metadataFile.save(JSON.stringify(metadata, null, 2), {
+      contentType: 'application/json',
+      metadata: {
+        cacheControl: 'no-cache'
+      }
     });
 
-    // Process analysis and send emails in background
-    (async () => {
-      try {
-        // Process analysis in background
-        console.log('\n=== Starting Background Processing ===');
-        console.log('Processing analysis for session:', sessionId);
-        const analysisResults = await processAnalysis(sessionId, baseUrl);
-        console.log('✓ Analysis processing complete');
-        
-        // Send emails and update sheets
-        console.log('\n=== Starting Email Delivery ===');
-        await sendEmails(email, analysisResults, metadata, sessionId);
-        console.log('✓ Email delivery complete');
-        console.log('=== Email Submission Process Complete ===\n');
-      } catch (error) {
-        // Log error but don't stop the process
-        console.error('\n✗ Background processing error:', error);
-        console.error('Stack trace:', error.stack);
-        
-        // Try to send emails anyway with whatever analysis results we have
-        try {
-          console.log('\n=== Attempting Email Delivery Despite Errors ===');
-          await sendEmails(email, { analysis: null, origin: null, detailed: null }, metadata, sessionId);
-          console.log('✓ Email delivery completed with limited analysis');
-        } catch (emailError) {
-          console.error('✗ Final email delivery attempt failed:', emailError);
-        }
-        
-        console.log('=== Email Submission Process Complete with Errors ===\n');
-      }
-    })().catch(error => {
-      console.error('Unhandled error in background processing:', error);
+    console.log('✓ Session metadata updated with email submission');
+    console.log('=== Email Submission Process Complete ===\n');
+
+    // Send success response
+    res.json({
+      success: true,
+      message: 'Email submission received and queued for processing.',
+      submissionTime: message.timestamp
     });
 
   } catch (error) {
     console.error('\n✗ Email submission error:', error);
     console.error('Stack trace:', error.stack);
     console.log('=== Email Submission Process Failed ===\n');
+    
     res.status(500).json({
       success: false,
       message: 'Error processing email submission.',

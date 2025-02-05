@@ -1,197 +1,416 @@
-# Art Appraisal CRM Service
+# Art Analysis Backend Service
 
-A dedicated Node.js service for handling customer relationship management (CRM) and communications for the Art Appraisal platform. This service processes PubSub messages to trigger customer communications, manage email campaigns, and handle customer interactions.
+A specialized Node.js backend service focused on art and antique image analysis using Google Cloud Vision API and OpenAI Vision. This service provides comprehensive artwork analysis, origin determination, and visual search capabilities.
 
 ## Overview
 
-This service is part of a microservices architecture where:
-- Analysis and processing are handled by separate services
-- This CRM service focuses solely on customer communications
-- Communication workflows are triggered by Google Cloud PubSub messages
-- All customer data and interaction history are tracked and logged
+This service is part of a microservices architecture, specifically handling:
+- Image upload and storage
+- Visual similarity analysis
+- Origin determination
+- Detailed artwork analysis
+
+The service communicates with other components through Google Cloud Pub/Sub for asynchronous operations like email notifications and user communications.
+
+## Repository Structure
+
+```
+.
+├── Dockerfile
+├── README.md
+├── index.js
+├── package.json
+└── src/
+    ├── config/
+    │   ├── models.js        # OpenAI model configuration
+    │   ├── prompts.js       # System prompts for AI analysis
+    │   └── secrets.js       # Secret management configuration
+    ├── middleware/
+    │   └── cors.js          # CORS configuration
+    ├── routes/
+    │   ├── fullAnalysis.js  # Complete artwork analysis
+    │   ├── health.js        # Health check endpoints
+    │   ├── originAnalysis.js # Origin determination
+    │   ├── session.js       # Session management
+    │   ├── upload.js        # File upload handling
+    │   └── visualSearch.js  # Visual search processing
+    ├── services/
+    │   ├── openai.js        # OpenAI integration
+    │   ├── pubsub.js        # Pub/Sub message publishing
+    │   ├── storage.js       # Cloud storage management
+    │   └── vision.js        # Google Vision integration
+    └── utils/
+        ├── validators.js    # Input validation utilities
+        └── formatters.js    # Response formatting utilities
+```
 
 ## Core Features
 
-### Message Processing
-- Handles PubSub messages for customer communications
-- Processes screener notifications
-- Manages analysis completion notifications
-- Coordinates email campaign triggers
+### Image Analysis
+- Dual analysis system using Google Cloud Vision and OpenAI Vision
+- Origin analysis for artwork authenticity
+- Visual similarity search with parallel API processing
+- Comprehensive image metadata extraction
 
-### Email Communications
-- Professional HTML email templates
-- Automated email campaign management
-- Personalized offer generation
-- Analysis report delivery
-- Smart retry logic for failed communications
-- Rate-limited submissions
+### Storage & Data Management
+- Session-based file organization
+- Automatic file cleanup
+- Structured JSON storage for analysis results
+- Metadata tracking for all uploads
 
-### Security & Privacy
-- Email encryption using AES-256-GCM
-- Argon2 password hashing for secure storage
-- Rate limiting protection (5 requests per minute)
-- CORS protection with domain allowlist
+### Cloud Integration
+- Google Cloud Storage for file management
+- Google Cloud Secret Manager for secure configuration
+- Google Cloud Vision API for image analysis
+- OpenAI GPT-4 Vision for expert analysis
+- Google Cloud Pub/Sub for event publishing
 
-### PubSub Integration
-- Push-based message handling via `/push-handler` endpoint
-- Secure message validation and processing
-- Automated customer communication workflows
-- Error handling and retry mechanisms
+## API Endpoints
 
-### Data Management
-- Customer interaction tracking in Google Sheets
-- Email delivery status monitoring
-- Communication history logging
-- Automated sheet updates for all processes
+### Step-by-Step Endpoint Actions
 
-## Screener Notification Process
+#### 1. Image Upload (`POST /upload-temp`)
+Handles the initial image upload and creates a new analysis session.
 
-When a screener notification message is received via PubSub, the service follows this workflow:
+1. **Request Validation**
+   - Validates presence of image file
+   - Checks file type (JPEG, PNG, WebP only)
+   - Enforces 10MB size limit
 
-### 1. Message Reception and Validation
-```json
+2. **Session Creation**
+   - Generates unique session ID (UUID)
+   - Creates session folder in Google Cloud Storage
+   - Standardizes image filename: `UserUploadedImage.[ext]`
+
+3. **Metadata Generation**
+   ```json
+   {
+     "originalName": "string",
+     "timestamp": "number",
+     "analyzed": false,
+     "mimeType": "string",
+     "size": "number",
+     "fileName": "string",
+     "imageUrl": "string"
+   }
+   ```
+
+4. **Storage Operations**
+   - Creates session folder structure:
+     ```
+     sessions/{sessionId}/
+     ├── UserUploadedImage.[ext]
+     └── metadata.json
+     ```
+   - Uploads image with public caching (3600s)
+   - Saves metadata with no-cache setting
+
+5. **Logging**
+   - Logs upload to Google Sheets:
+     - Timestamp
+     - Session ID
+     - Upload time
+     - Image URL
+
+6. **Response Format**
+   ```typescript
+   {
+     success: boolean;
+     message?: string;  // Optional error message if success is false
+     imageUrl: string;  // URL of the uploaded image
+     sessionId: string;  // Unique session identifier
+   }
+   ```
+
+7. **Error Handling**
+   - Invalid file type: 400 Bad Request
+   - Missing file: 400 Bad Request
+   - Storage errors: 500 Internal Server Error
+   - Metadata errors: 500 Internal Server Error
+   - Sheets logging: Non-blocking (continues on error)
+
+#### 2. Session Data (`GET /session/{sessionId}`)
+1. User provides a session ID
+2. System retrieves:
+   - Session metadata (file info, timestamps)
+   - Visual analysis results (if completed)
+   - Origin analysis results (if completed)
+3. Returns consolidated session data including:
+   - Original upload information
+   - Analysis status and results
+   - Processing timestamps
+
+#### 3. Visual Analysis (`POST /visual-search`)
+1. User submits a session ID for analysis
+2. System performs:
+   - Google Vision API analysis for web detection
+   - OpenAI Vision analysis for expert insights
+   - Parallel processing of both analyses
+3. Results include:
+   - Similar images found online
+   - Web entities and labels
+   - Category classification
+   - Confidence scores
+   - Expert description
+
+#### 4. Origin Analysis (`POST /origin-analysis`)
+1. User requests origin analysis with session ID
+2. System:
+   - Retrieves visual analysis (runs it if not exists)
+   - Filters and validates similar images
+   - Performs OpenAI analysis for authenticity
+3. Provides:
+   - Originality assessment
+   - Style analysis
+   - Unique characteristics
+   - Comparison with similar works
+   - Professional recommendations
+
+#### 5. Full Analysis (`POST /full-analysis`)
+1. User requests comprehensive analysis
+2. System performs detailed AI analysis including:
+   - Maker/artist identification
+   - Signature verification
+   - Origin determination
+   - Marks and hallmarks recognition
+   - Age estimation
+   - Similar artwork comparison
+3. Returns:
+   - Complete analysis report
+   - All metadata
+   - Detailed findings in each category
+
+#### 6. Submit Email (`POST /submit-email`)
+1. User submits email with session ID
+2. System:
+   - Validates email format
+   - Associates email with session
+   - Queues CRM notification
+3. Returns:
+   - Submission confirmation
+   - Timestamp
+   - Processing status
+
+#### 7. Health Check (`GET /api/health/status`)
+1. User or monitoring system checks service health
+2. System verifies:
+   - Storage connectivity
+   - Vision API availability
+   - Overall service status
+3. Returns:
+   - Service health status
+   - Uptime information
+   - Component status details
+
+#### 8. API Documentation (`GET /api/health/endpoints`)
+1. User requests API documentation
+2. System provides:
+   - Complete endpoint listing
+   - Required parameters
+   - Response formats
+   - Service version information
+
+### Image Upload
+```http
+POST /upload-temp
+Content-Type: multipart/form-data
+
 {
-  "crmProcess": "screenerNotification",
-  "customer": {
-    "email": "customer@example.com",
-    "name": "Customer Name"
-  },
-  "origin": "screener",
-  "timestamp": 1703187654321,
-  "sessionId": "uuid-v4-session-id",
-  "metadata": {
-    "originalName": "artwork.jpg",
-    "imageUrl": "https://storage.googleapis.com/bucket-name/sessions/uuid/UserUploadedImage.jpg",
-    "timestamp": 1703187654321,
-    "analyzed": false,
-    "originAnalyzed": false,
-    "size": 1024000,
-    "mimeType": "image/jpeg"
+  "image": <file>
+}
+```
+- Supports JPEG, PNG, WebP formats
+- 10MB file size limit
+- Returns session ID and image URL
+- Creates session storage structure
+
+### Session Data
+```http
+GET /session/{sessionId}
+
+Response: {
+  "success": boolean,
+  "session": {
+    "id": string,
+    "metadata": {
+      "originalName": string,
+      "timestamp": number,
+      "analyzed": boolean,
+      "mimeType": string,
+      "size": number,
+      "imageUrl": string
+    },
+    "analysis": object | null,
+    "origin": object | null
   }
 }
 ```
 
-### 2. Process Flow
-1. **Message Reception** (`/push-handler` endpoint)
-   - Receives PubSub push message
-   - Decodes base64-encoded message data
-   - Validates message structure and required fields
-   - Routes to `handleScreenerNotification` for processing
+### Visual Analysis
+```http
+POST /visual-search
+Content-Type: application/json
 
-2. **Initial Processing** (`handleScreenerNotification`)
-   - Extracts customer email, session ID, and metadata
-   - Begins logging process
-   - Initiates parallel workflows for report and offer
+{
+  "sessionId": "uuid"
+}
 
-3. **Sheet Logging** (`sheetsService.updateEmailSubmission`)
-   - Finds or creates row for session ID
-   - Records:
-     - Timestamp
-     - Session ID
-     - Customer email
-     - Communication type ("Screener")
-
-4. **Free Report Generation** (`emailService.sendFreeReport`)
-   - Composes initial analysis report using:
-     - Image metadata
-     - Basic file information
-     - Placeholder for analysis results
-   - Generates HTML email using report template
-   - Sends via SendGrid
-   - Updates sheet with report status
-
-5. **Personal Offer Scheduling** (`emailService.sendPersonalOffer`)
-   - Calculates scheduled time (1 hour after notification)
-   - Generates personalized content via Michelle API using:
-     - Customer information
-     - Image metadata
-     - Session details
-   - Schedules email delivery via SendGrid
-   - Updates sheet with offer status and scheduled time
-
-6. **Status Updates** (`sheetsService`)
-   - Updates free report delivery status
-   - Records offer scheduling status
-   - Logs all timestamps and content hashes
-
-7. **Error Handling**
-   - Catches and logs all errors
-   - Maintains transaction log in sheets
-   - Allows for manual intervention if needed
-
-### 3. Sheet Structure
-The service maintains a detailed log in Google Sheets with the following columns:
-
-```
-A: Timestamp
-B: Session ID
-C: Upload Time
-D: Image URL
-E: Analysis Status
-F: Analysis Time
-G: Origin Status
-H: Origin Time
-I: Email
-J: Email Submission Time
-K: Free Report Status
-L: Free Report Time
-M: Offer Status
-N: Offer Time
-O: Offer Delivered
-P: Offer Content
+Response: {
+  "success": boolean,
+  "message": string,
+  "results": {
+    "vision": {
+      "webEntities": Array<Entity>,
+      "description": {
+        "labels": string[],
+        "confidence": number
+      },
+      "matches": {
+        "exact": Array<Match>,
+        "partial": Array<Match>,
+        "similar": Array<Match>
+      }
+    },
+    "openai": {
+      "category": "Art" | "Antique",
+      "description": string
+    }
+  }
+}
 ```
 
-### 4. Success Criteria
-A screener notification is considered successfully processed when:
-1. Customer email is logged in sheets
-2. Free report is sent and delivery confirmed
-3. Personal offer is scheduled for future delivery
-4. All status updates are recorded in sheets
+### Origin Analysis
+```http
+POST /origin-analysis
+Content-Type: application/json
 
-### 5. Error Recovery
-If any step fails:
-1. Error is logged with full stack trace
-2. Sheet is updated with failure status
-3. Subsequent steps continue if possible
-4. Failed operations can be retried manually
+{
+  "sessionId": "uuid"
+}
+
+Response: {
+  "success": boolean,
+  "message": string,
+  "results": {
+    "timestamp": number,
+    "matches": {
+      "exact": Array<Match>,
+      "partial": Array<Match>,
+      "similar": Array<Match>
+    },
+    "originAnalysis": {
+      "originality": "original" | "reproduction",
+      "confidence": number,
+      "style_analysis": string,
+      "unique_characteristics": string[],
+      "comparison_notes": string,
+      "recommendation": string
+    }
+  }
+}
+```
+
+### Full Analysis
+```http
+POST /full-analysis
+Content-Type: application/json
+
+{
+  "sessionId": "uuid"
+}
+
+Response: {
+  "success": boolean,
+  "message": string,
+  "results": {
+    "metadata": object,
+    "detailedAnalysis": {
+      "maker_analysis": {
+        "creator_name": string,
+        "reasoning": string
+      },
+      "signature_check": {
+        "signature_text": string,
+        "interpretation": string
+      },
+      "origin_analysis": {
+        "likely_origin": string,
+        "reasoning": string
+      },
+      "marks_recognition": {
+        "marks_identified": string,
+        "interpretation": string
+      },
+      "age_analysis": {
+        "estimated_date_range": string,
+        "reasoning": string
+      },
+      "visual_search": {
+        "similar_artworks": string,
+        "notes": string
+      }
+    }
+  }
+}
+```
+
+## Event Publishing
+
+The service publishes events to Google Cloud Pub/Sub for the following scenarios:
+
+### CRM Notification
+Topic: `CRM-tasks`
+```json
+{
+  "crmProcess": "screenerNotification",
+  "customer": {
+    "email": "string"
+  },
+  "sessionId": "string",
+  "metadata": {
+    "originalName": "string",
+    "imageUrl": "string",
+    "mimeType": "string",
+    "size": "number"
+  },
+  "timestamp": "number"
+}
+```
+
+This message is published when a user submits their email for analysis results. All required analyses (visual, origin, and detailed) must be completed before the message is published.
 
 ## Required Environment Variables
 
-Configure the following secrets in Google Cloud Secret Manager:
-- `EMAIL_ENCRYPTION_KEY`
-- `SENDGRID_API_KEY`
-- `SENDGRID_EMAIL`
-- `SEND_GRID_TEMPLATE_FREE_REPORT`
-- `SEND_GRID_TEMPLATE_PERSONAL_OFFER`
-- `DIRECT_API_KEY` (for Michelle API)
-- `SHEETS_ID_FREE_REPORTS_LOG`
-- `PUBSUB_SUBSCRIPTION_NAME`
+The following secrets must be configured in Google Cloud Secret Manager:
 - `GOOGLE_CLOUD_PROJECT_ID`
+- `GCS_BUCKET_NAME`
+- `OPENAI_API_KEY`
+- `SERVICE_ACCOUNT_JSON`
+- `PUBSUB_TOPIC_ANALYSIS_COMPLETE`
 
 ## Development
 
-1. Set up Google Cloud project and enable required APIs:
-   - Cloud PubSub
-   - Secret Manager
-   - Sheets API
-   - SendGrid API
+To run locally:
 
-2. Install dependencies:
+1. Set up Google Cloud project and enable required APIs
+2. Configure secrets in Google Cloud Secret Manager
+3. Install dependencies:
 ```bash
 npm install
 ```
 
-3. Start the service:
+4. Start the server:
 ```bash
 npm start
 ```
-The service will start on port 8080 and begin processing messages.
 
-## Deployment
+The server will start on port 8080 by default.
+
+## Docker Support
 
 Build and run using Docker:
 
 ```bash
-docker build -t art-appraisal-crm .
-docker run -p 8080:8080 art-appraisal-crm
+docker build -t art-analysis-backend .
+docker run -p 8080:8080 art-analysis-backend
 ```
