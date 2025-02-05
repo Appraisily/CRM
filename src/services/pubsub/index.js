@@ -106,3 +106,5 @@ class PubSubService {
     }
   }
 }
+
+module.exports = new PubSubService();
