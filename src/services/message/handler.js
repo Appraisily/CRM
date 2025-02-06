@@ -57,118 +57,83 @@ class MessageHandler {
         await pubSubService.publishToDLQ(message, parseError);
         if (message.nack) message.nack();
         return false;
+      
+      // Validate message structure
+      if (!message || !message.data) {
+        throw new ValidationError('Invalid message structure: missing data');
+      }
+      
+      let data;
+      try {
+        data = JSON.parse(Buffer.from(message.data, 'base64').toString());
+      } catch (parseError) {
+        throw new ValidationError(`Failed to parse message data: ${parseError.message}`);
       }
 
-      console.log('Parsed message data:', {
+      this.logger.info('Parsed message data:', {
         crmProcess: data.crmProcess,
         sessionId: data.sessionId,
         hasCustomer: !!data.customer,
         hasMetadata: !!data.metadata,
         timestamp: data.timestamp
       });
+      
+      // Validate message content
+      if (!data.crmProcess) {
+        throw new ValidationError('Missing required field: crmProcess');
+      }
 
+      // Validate message format based on process type
       const validation = validateScreenerNotification(data);
       if (!validation.isValid) {
         throw new ValidationError(`Invalid message format: ${validation.errors.join(', ')}`);
       }
 
-      const result = await emailService.handleScreenerNotification({
-        customer: data.customer,
+      let result;
+      try {
+        result = await emailService.handleScreenerNotification({
+          customer: data.customer,
+          sessionId: data.sessionId,
+          metadata: data.metadata,
+          timestamp: data.timestamp,
+          origin: data.origin
+        });
+      } catch (processError) {
+        throw new ProcessingError(`Failed to process screener notification: ${processError.message}`);
+      }
+
+      if (!result.success) {
+        throw new ProcessingError(result.error || 'Processing failed without specific error');
+      }
+
+      this.logger.success('Message processed successfully', {
         sessionId: data.sessionId,
-        metadata: data.metadata,
-        timestamp: data.timestamp,
-        origin: data.origin
+        processStatus: result.processStatus
       });
 
-      // Only call ack/nack if they exist (PubSub pull subscription)
-      if (message.ack && typeof message.ack === 'function') {
-        message.ack();
-      }
       return result.success;
 
     } catch (error) {
-      this.logger.error('Error processing message', error);
-      await pubSubService.publishToDLQ(message, error);
-      
-      // Only call ack/nack if they exist (PubSub pull subscription)
-      if (message.nack && typeof message.nack === 'function') {
-        message.nack();
+      // Log different types of errors appropriately
+      if (error instanceof ValidationError) {
+        this.logger.error('Message validation failed', error);
+      } else if (error instanceof ProcessingError) {
+        this.logger.error('Message processing failed', error);
+      } else {
+        this.logger.error('Unexpected error during message handling', error);
       }
+
+      // Attempt to publish to DLQ if available
+      try {
+        await pubSubService.publishToDLQ(message, error);
+      } catch (dlqError) {
+        this.logger.error('Failed to publish to DLQ', dlqError);
+      }
+
       throw error;
     } finally {
       this.logger.end();
     }
-  }
-
-  async handlePushMessage(req, res) {
-    try {
-      this.logger.info('Processing PubSub Push Message');
-
-      // Early validation of request body
-      if (!req.body || !req.body.message) {
-        console.error('No message found in request body');
-        console.log('Request body:', req.body);
-        return res.status(400).send('No message found');
-      }
-
-      // Early acknowledgment to prevent retries
-      res.status(204).send();
-
-      const message = req.body.message;
-
-      if (!message.data) {
-        this.logger.error('No data field in message');
-        await pubSubService.publishToDLQ(message, new Error('No data field in message'));
-        return;
-      }
-
-      // Decode and parse message data
-      try {
-        const decodedData = Buffer.from(message.data, 'base64').toString();
-        this.logger.info('Decoded message data:', { data: decodedData });
-
-        const data = JSON.parse(decodedData);
-        console.log('Received push message:', {
-          type: data.crmProcess,
-          sessionId: data.sessionId,
-          timestamp: data.timestamp
-        });
-
-        // Validate message format
-        const validation = validateScreenerNotification(data);
-        if (!validation.isValid) {
-          throw new ValidationError(`Invalid message format: ${validation.errors.join(', ')}`);
-        }
-
-        // Process screener notification
-        const result = await emailService.handleScreenerNotification(data);
-        
-        if (!result.success) {
-          throw new Error(result.error || 'Processing failed');
-        }
-        
-        this.logger.end();
-        
-      } catch (processingError) {
-        this.logger.error('Error processing message', processingError);
-        await pubSubService.publishToDLQ(message, processingError);
-        this.logger.end();
-      }
-
-    } catch (error) {
-      this.logger.error('Error handling push message', error);
-
-      try {
-        this.logger.info('Attempting to publish to DLQ');
-        if (req.body?.message) {
-          await pubSubService.publishToDLQ(req.body.message, error);
-        }
-      } catch (dlqError) {
-        console.error('Failed to publish to DLQ:', dlqError);
-      }
-    }
-
-    this.logger.end();
   }
 }
 

@@ -7,8 +7,10 @@ const sheetsService = require('./src/services/sheets');
 const encryption = require('./src/services/encryption');
 const pubSubService = require('./src/services/pubsub');
 const messageHandler = require('./src/services/message/handler');
+const Logger = require('./src/utils/logger');
 
 const app = express();
+const logger = new Logger('Main Service');
 
 app.use(express.json());
 
@@ -17,15 +19,14 @@ app.set('trust proxy', 1);
 
 app.use(corsMiddleware);
 
-// Mount PubSub push endpoint
-app.post('/push-handler', messageHandler.handlePushMessage.bind(messageHandler));
-
 // Initialize application
 const init = async () => {
   try {
+    logger.info('Starting CRM service initialization');
     const { secrets, keyFilePath } = await loadSecrets();
 
     // Initialize cloud storage service
+    logger.info('Initializing cloud storage service');
     await cloudServices.initialize(
       secrets.GOOGLE_CLOUD_PROJECT_ID,
       keyFilePath,
@@ -34,19 +35,26 @@ const init = async () => {
     );
 
     // Initialize PubSub service
+    logger.info('Initializing PubSub service');
+    if (!secrets.PUBSUB_SUBSCRIPTION_NAME) {
+      throw new Error('PUBSUB_SUBSCRIPTION_NAME is required');
+    }
     await pubSubService.initialize(
       secrets.GOOGLE_CLOUD_PROJECT_ID,
-      'CRM-tasks',
+      secrets.PUBSUB_SUBSCRIPTION_NAME,
       messageHandler.handleMessage.bind(messageHandler)
     );
 
     // Initialize sheets service
+    logger.info('Initializing sheets service');
     sheetsService.initialize(keyFilePath, secrets.SHEETS_ID_FREE_REPORTS_LOG);
 
     // Initialize encryption service
+    logger.info('Initializing encryption service');
     encryption.initialize(secrets.EMAIL_ENCRYPTION_KEY);
 
     // Initialize email service
+    logger.info('Initializing email service');
     emailService.initialize(
       secrets.SENDGRID_API_KEY,
       secrets.SENDGRID_EMAIL,
@@ -58,22 +66,41 @@ const init = async () => {
 
     const PORT = process.env.PORT || 8080;
     app.listen(PORT, () => {
-      console.log(`CRM service is running on port ${PORT}`);
+      logger.success(`CRM service is running on port ${PORT}`);
     });
+
+    logger.success('Service initialization complete');
   } catch (error) {
-    console.error('Failed to initialize application:', error);
+    logger.error('Failed to initialize application', error);
     process.exit(1);
   }
 
-  // Graceful shutdown
-  process.on('SIGTERM', () => {
-    console.log('SIGTERM received. Closing subscription...');
-    pubSubService.shutdown()
-      .then(() => process.exit(0))
-      .catch(error => {
-        console.error('Error during shutdown:', error);
-        process.exit(1);
-      });
+  // Handle shutdown signals
+  const handleShutdown = async (signal) => {
+    logger.info(`${signal} received. Starting graceful shutdown...`);
+    try {
+      await pubSubService.shutdown();
+      logger.success('PubSub subscription closed successfully');
+      process.exit(0);
+    } catch (error) {
+      logger.error('Error during shutdown', error);
+      process.exit(1);
+    }
+  };
+
+  // Register signal handlers
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
+
+  // Handle uncaught errors
+  process.on('uncaughtException', (error) => {
+    logger.error('Uncaught exception', error);
+    handleShutdown('UNCAUGHT_EXCEPTION');
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled rejection', { reason, promise });
+    handleShutdown('UNHANDLED_REJECTION');
   });
 };
 
