@@ -36,12 +36,13 @@ const init = async () => {
 
     // Initialize PubSub service
     logger.info('Initializing PubSub service');
-    if (!secrets.PUBSUB_SUBSCRIPTION_NAME) {
+    const subscriptionName = process.env.PUBSUB_SUBSCRIPTION_NAME;
+    if (!subscriptionName) {
       throw new Error('PUBSUB_SUBSCRIPTION_NAME is required');
     }
     await pubSubService.initialize(
       secrets.GOOGLE_CLOUD_PROJECT_ID,
-      secrets.PUBSUB_SUBSCRIPTION_NAME,
+      subscriptionName,
       messageHandler.handleMessage.bind(messageHandler)
     );
 
