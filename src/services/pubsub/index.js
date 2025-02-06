@@ -32,12 +32,6 @@ class PubSubService {
       if (!exists) {
         throw new InitializationError(`Subscription ${subscriptionName} does not exist`);
       }
-      
-      // Configure subscription settings
-      await this.subscription.setMetadata({
-        ackDeadlineSeconds: 30, // Give 30 seconds to process each message
-        enableMessageOrdering: true
-      });
 
       // Start pulling messages
       this._startPulling();
@@ -61,17 +55,15 @@ class PubSubService {
     while (this.isProcessing) {
       try {
         // Pull a single message
-        const [messages] = await this.subscription.pull({
-          maxMessages: 1,
-          returnImmediately: false
-        });
+        const response = await this.subscription.pull();
+        const [messages] = response;
 
         if (messages && messages.length > 0) {
           const message = messages[0];
           await this._processMessage(message);
         }
       } catch (error) {
-        if (error.code !== 4) { // Ignore DEADLINE_EXCEEDED errors
+        if (error.code !== 4 && error.code !== 'DEADLINE_EXCEEDED') { // Ignore DEADLINE_EXCEEDED errors
           this.logger.error('Error pulling messages', error);
           await new Promise(resolve => setTimeout(resolve, 1000)); // Wait before retrying
         }
