@@ -46,7 +46,7 @@ class MessageHandler {
   async handleMessage(message) {
     try {
       this.logger.info('Processing PubSub Message');
-            
+      
       // Parse message data
       let data;
       try {
@@ -66,58 +66,28 @@ class MessageHandler {
       });
       
       // Validate message content
-      if (!data.crmProcess) {
-        throw new ValidationError('Missing required field: crmProcess');
-      }
-
-      // Validate message format based on process type
-      const validation = data.crmProcess === 'screenerNotification' ? validateScreenerNotification(data) : { isValid: false, errors: ['Unknown crmProcess type'] };
+      const validation = validateScreenerNotification(data);
       if (!validation.isValid) {
         throw new ValidationError(`Invalid message format: ${validation.errors.join(', ')}`);
       }
 
       // Process the message
-      let result;
-      try {
-        result = await emailService.handleScreenerNotification({
-          customer: data.customer,
-          sessionId: data.sessionId,
-          metadata: data.metadata,
-          timestamp: data.timestamp,
-          origin: data.origin
-        });
-      } catch (processError) {
-        throw new ProcessingError(`Failed to process screener notification: ${processError.message}`);
-      }
+      const result = await emailService.handleScreenerNotification({
+        customer: data.customer,
+        sessionId: data.sessionId,
+        metadata: data.metadata,
+        timestamp: data.timestamp,
+        origin: data.origin
+      });
 
       if (!result.success) {
         throw new ProcessingError(result.error || 'Processing failed without specific error');
       }
 
-      this.logger.success('Message processed successfully', {
-        sessionId: data.sessionId,
-        processStatus: result.processStatus
-      });
-
       return result.success;
 
     } catch (error) {
-      // Log different types of errors appropriately
-      if (error instanceof ValidationError) {
-        this.logger.error('Message validation failed', error);
-      } else if (error instanceof ProcessingError) {
-        this.logger.error('Message processing failed', error);
-      } else {
-        this.logger.error('Unexpected error during message handling', error);
-      }
-
-      // Attempt to publish to DLQ if available
-      try {
-        await pubSubService.publishToDLQ(message, error);
-      } catch (dlqError) {
-        this.logger.error('Failed to publish to DLQ', dlqError);
-      }
-
+      this.logger.error('Error processing message', error);
       throw error;
     } finally {
       this.logger.end();

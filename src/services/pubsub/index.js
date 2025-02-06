@@ -86,35 +86,36 @@ class PubSubService {
         messageId: message.id,
         publishTime: message.publishTime
       });
-
+      
       // Always parse and validate message before processing
       let data;
       try {
         data = typeof message.data === 'string' ? 
           JSON.parse(message.data) :
           JSON.parse(message.data.toString());
+
+        // Immediately ack the message to prevent duplicate processing
+        message.ack();
+
       } catch (parseError) {
         this.logger.error('Failed to parse message data', parseError);
         await this.publishToDLQ(message, parseError);
-        message.ack(); // Ack malformed messages to prevent infinite retries
+        message.ack();
         return;
       }
 
-      await this.messageHandler(message);
-      this.logger.success('Message processed and acknowledged');
-      message.ack();
+      try {
+        await this.messageHandler(message);
+        this.logger.success('Message processed successfully');
+      } catch (error) {
+        this.logger.error('Error in message handler', error);
+        await this.publishToDLQ(message, error);
+      }
+
     } catch (error) {
       this.logger.error('Error in message handler', error);
-      
-      // For validation errors, ack the message to prevent infinite retries
-      if (error.name === 'ValidationError') {
-        this.logger.info('Validation error - acknowledging message to prevent retries');
-        await this.publishToDLQ(message, error);
-        message.ack();
-      } else {
-        // For other errors, nack to retry
-        message.nack();
-      }
+      await this.publishToDLQ(message, error);
+      message.ack(); // Always ack to prevent retries, we've moved it to DLQ
     }
   }
 
