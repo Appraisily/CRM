@@ -61,10 +61,6 @@ class PubSubService {
         this.logger.info('Subscription closed');
       });
       
-      // Start listening for messages
-      this.logger.info('Starting message listener...');
-      this.subscription.on('message', this._handleMessage.bind(this));
-      
       this.logger.success('PubSub service initialized successfully');
       this.logger.end();
     } catch (error) {
@@ -80,12 +76,34 @@ class PubSubService {
         publishTime: message.publishTime
       });
 
+      // Always parse and validate message before processing
+      let data;
+      try {
+        data = typeof message.data === 'string' ? 
+          JSON.parse(message.data) :
+          JSON.parse(message.data.toString());
+      } catch (parseError) {
+        this.logger.error('Failed to parse message data', parseError);
+        await this.publishToDLQ(message, parseError);
+        message.ack(); // Ack malformed messages to prevent infinite retries
+        return;
+      }
+
       await this.messageHandler(message);
       this.logger.success('Message processed and acknowledged');
       message.ack();
     } catch (error) {
       this.logger.error('Error in message handler', error);
-      message.nack();
+      
+      // For validation errors, ack the message to prevent infinite retries
+      if (error.name === 'ValidationError') {
+        this.logger.info('Validation error - acknowledging message to prevent retries');
+        await this.publishToDLQ(message, error);
+        message.ack();
+      } else {
+        // For other errors, nack to retry
+        message.nack();
+      }
     }
   }
 

@@ -46,12 +46,7 @@ class MessageHandler {
   async handleMessage(message) {
     try {
       this.logger.info('Processing PubSub Message');
-      
-      // Validate message structure
-      if (!message || !message.data) {
-        throw new ValidationError('Invalid message structure: missing data');
-      }
-      
+            
       // Parse message data
       let data;
       try {
@@ -76,7 +71,7 @@ class MessageHandler {
       }
 
       // Validate message format based on process type
-      const validation = validateScreenerNotification(data);
+      const validation = data.crmProcess === 'screenerNotification' ? validateScreenerNotification(data) : { isValid: false, errors: ['Unknown crmProcess type'] };
       if (!validation.isValid) {
         throw new ValidationError(`Invalid message format: ${validation.errors.join(', ')}`);
       }
