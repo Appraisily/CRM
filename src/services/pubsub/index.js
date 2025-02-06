@@ -40,25 +40,8 @@ class PubSubService {
       if (!dlqExists) {
         this.logger.info('Creating DLQ topic...');
         await this.dlqTopic.create();
-        
-        // Create DLQ subscription
-        const dlqSubscriptionName = `${subscriptionName}-dlq-sub`;
-        this.dlqSubscription = this.dlqTopic.subscription(dlqSubscriptionName);
-        const [dlqSubExists] = await this.dlqSubscription.exists();
-        
-        if (!dlqSubExists) {
-          this.logger.info('Creating DLQ subscription...');
-          await this.dlqSubscription.create();
-        }
-        
-        this.logger.success('DLQ topic and subscription created');
+        this.logger.success('DLQ topic created');
       }
-      
-      // Set up DLQ message handling
-      this.dlqSubscription.on('message', this._handleDLQMessage.bind(this));
-      this.dlqSubscription.on('error', error => {
-        this.logger.error('DLQ subscription error', error);
-      });
 
       // Set up message handling
       const options = {
@@ -135,49 +118,11 @@ class PubSubService {
     }
   }
 
-  async _handleDLQMessage(message) {
-    try {
-      this.logger.info('Processing DLQ message', {
-        messageId: message.id,
-        publishTime: message.publishTime
-      });
-
-      // Parse DLQ message
-      const dlqData = JSON.parse(message.data.toString());
-      const { originalMessage, error } = dlqData;
-
-      this.logger.info('DLQ message details', {
-        originalMessageId: originalMessage.id,
-        errorType: error.name,
-        errorMessage: error.message,
-        timestamp: error.timestamp
-      });
-
-      // Here you can implement custom logic for DLQ messages
-      // For example:
-      // - Log to monitoring system
-      // - Send alerts
-      // - Attempt reprocessing with modified data
-      // - Archive for manual review
-
-      // For now, we'll just acknowledge the message
-      message.ack();
-      this.logger.success('DLQ message processed');
-
-    } catch (error) {
-      this.logger.error('Error processing DLQ message', error);
-      message.nack(); // Retry DLQ message processing
-    }
-  }
-
   async shutdown() {
     if (this.subscription) {
       try {
         this.logger.info('Closing PubSub subscription...');
-        await Promise.all([
-          this.subscription.close(),
-          this.dlqSubscription?.close()
-        ]);
+        await this.subscription.close();
         this.logger.success('PubSub subscription closed successfully');
       } catch (error) {
         this.logger.error('Error closing PubSub subscription', error);
