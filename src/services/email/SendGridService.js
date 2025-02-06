@@ -40,9 +40,11 @@ class SendGridService {
       const msg = {
         to: toEmail,
         from: this.fromEmail,
-        subject: subject,
-        html: content,
         templateId: this.personalOfferTemplateId,
+        dynamicTemplateData: {
+          subject: subject,
+          email_content: content
+        },
         sendAt: scheduledTime ? Math.floor(scheduledTime / 1000) : undefined
       };
 
@@ -65,17 +67,13 @@ class SendGridService {
 
   async sendFreeReport(toEmail, reportData) {
     if (!this.initialized) {
-      throw new InitializationError('SendGrid service not initialized');
-    }
-
-    try {
       const msg = {
         to: toEmail,
         from: this.fromEmail,
         templateId: this.freeReportTemplateId,
         dynamicTemplateData: {
           subject: 'Your Free Art Analysis Report',
-          free_report: reportData
+          free_report: reportData // Pass the raw HTML directly for {{{free_report}}}
         }
       };
 
