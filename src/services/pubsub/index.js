@@ -6,7 +6,6 @@ class PubSubService {
   constructor() {
     this.client = null;
     this.subscription = null;
-    this.isProcessing = false;
     this.messageHandler = null;
     this.logger = new Logger('PubSub Service');
   }
@@ -33,8 +32,9 @@ class PubSubService {
         throw new InitializationError(`Subscription ${subscriptionName} does not exist`);
       }
 
-      // Start pulling messages
-      this._startPulling();
+      // Set up message handling
+      this.subscription.on('message', this._handleMessage.bind(this));
+      this.subscription.on('error', this._handleError.bind(this));
       
       this.logger.success('PubSub service initialized successfully');
       this.logger.end();
@@ -44,48 +44,24 @@ class PubSubService {
     }
   }
 
-  async _startPulling() {
-    if (this.isProcessing) {
-      return;
-    }
-
-    this.isProcessing = true;
-    this.logger.info('Starting message pull loop');
-
-    while (this.isProcessing) {
-      try {
-        // Pull a single message
-        const response = await this.subscription.pull();
-        const [messages] = response;
-
-        if (messages && messages.length > 0) {
-          const message = messages[0];
-          await this._processMessage(message);
-        }
-      } catch (error) {
-        if (error.code !== 4 && error.code !== 'DEADLINE_EXCEEDED') { // Ignore DEADLINE_EXCEEDED errors
-          this.logger.error('Error pulling messages', error);
-          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait before retrying
-        }
-      }
-    }
-  }
-
-  async _processMessage(message) {
+  async _handleMessage(message) {
     try {
       await this.messageHandler(message);
-      await this.subscription.ack(message);
+      message.ack();
       this.logger.success('Message processed and acknowledged');
     } catch (error) {
       this.logger.error('Error in message handler', error);
-      await this.subscription.nack(message);
+      message.nack();
     }
+  }
+
+  _handleError(error) {
+    this.logger.error('Subscription error', error);
   }
 
   async shutdown() {
     if (this.subscription) {
       try {
-        this.isProcessing = false;
         await this.subscription.close();
         this.logger.success('PubSub subscription closed successfully');
       } catch (error) {
