@@ -61,6 +61,10 @@ class PubSubService {
         this.logger.info('Subscription closed');
       });
       
+      // Start listening for messages
+      this.logger.info('Starting message listener...');
+      this.subscription.on('message', this._handleMessage.bind(this));
+      
       this.logger.success('PubSub service initialized successfully');
       this.logger.end();
     } catch (error) {
@@ -71,13 +75,17 @@ class PubSubService {
 
   async _handleMessage(message) {
     try {
+      this.logger.info('Received message', {
+        messageId: message.id,
+        publishTime: message.publishTime
+      });
+
       await this.messageHandler(message);
       this.logger.success('Message processed and acknowledged');
       message.ack();
     } catch (error) {
       this.logger.error('Error in message handler', error);
       message.nack();
-      throw error; // Re-throw to be caught by the outer handler
     }
   }
 
