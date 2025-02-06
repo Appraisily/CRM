@@ -103,14 +103,15 @@ class EmailService {
       this.logger.info('Sending Free Report');
       
       // Get the report HTML from GCS
-      const bucket = cloudServices.getBucket();
-      const reportFile = bucket.file(`images_free_reports/sessions/${sessionId}/report.html`);
+      const reportPath = `sessions/${sessionId}/report.html`;
+      console.log(`Fetching report from GCS: ${reportPath}`);
       
-      console.log(`Fetching report from GCS: images_free_reports/sessions/${sessionId}/report.html`);
+      const bucket = cloudServices.getBucket();
+      const reportFile = bucket.file(reportPath);
       
       const [exists] = await reportFile.exists();
       if (!exists) {
-        throw new ProcessingError('Report file not found in GCS');
+        throw new ProcessingError(`Report file not found in GCS: ${reportPath}`);
       }
       
       const [reportContent] = await reportFile.download();
