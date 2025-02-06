@@ -69,16 +69,14 @@ class SendGridService {
     }
 
     try {
-      const template = getFreeReportTemplate();
-      const escapedReportData = this.escapeHtmlForSendGrid(reportData);
-      const htmlContent = template.replace('{{free_report}}', escapedReportData);
-      
       const msg = {
         to: toEmail,
         from: this.fromEmail,
-        subject: 'Your Free Art Analysis Report',
-        html: htmlContent,
-        templateId: this.freeReportTemplateId
+        templateId: this.freeReportTemplateId,
+        dynamicTemplateData: {
+          subject: 'Your Free Art Analysis Report',
+          free_report: reportData
+        }
       };
 
       await sgMail.send(msg);
@@ -87,13 +85,6 @@ class SendGridService {
       this.logger.error('SendGrid error', error);
       throw error;
     }
-  }
-
-  escapeHtmlForSendGrid(text) {
-    return text
-      .replace(/\{/g, '&#123;')
-      .replace(/\}/g, '&#125;')
-      .replace(/"/g, '&quot;');
   }
 }
 
