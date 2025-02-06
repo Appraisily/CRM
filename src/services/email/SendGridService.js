@@ -37,6 +37,30 @@ class SendGridService {
     }
 
     try {
+      // Calculate sendAt time (current time + 1 hour if no specific time provided)
+      let sendAtTimestamp;
+      if (scheduledTime) {
+        // Handle different time formats
+        const timeValue = typeof scheduledTime === 'string' ? 
+          new Date(scheduledTime).getTime() : 
+          (typeof scheduledTime === 'number' ? scheduledTime : null);
+
+        if (!timeValue || isNaN(timeValue)) {
+          throw new Error('Invalid scheduledTime format');
+        }
+        sendAtTimestamp = Math.floor(timeValue / 1000);
+      } else {
+        // Default to current time + 1 hour (in seconds)
+        sendAtTimestamp = Math.floor((Date.now() + (60 * 60 * 1000)) / 1000);
+      }
+
+      // Validate the timestamp is in the future
+      const currentTimestamp = Math.floor(Date.now() / 1000);
+      if (sendAtTimestamp <= currentTimestamp) {
+        this.logger.info('Scheduled time is in the past, using current time + 1 hour');
+        sendAtTimestamp = currentTimestamp + (60 * 60);
+      }
+
       const msg = {
         to: toEmail,
         from: this.fromEmail,
@@ -45,7 +69,7 @@ class SendGridService {
           subject: subject,
           email_content: content
         },
-        sendAt: scheduledTime ? Math.floor(scheduledTime / 1000) : undefined
+        sendAt: sendAtTimestamp
       };
 
       await sgMail.send(msg);
@@ -57,7 +81,7 @@ class SendGridService {
         content,
         contentLength: content.length,
         recipient: toEmail,
-        scheduledTime
+        scheduledTime: sendAtTimestamp * 1000 // Convert back to milliseconds for consistency
       };
     } catch (error) {
       this.logger.error('SendGrid error sending personal offer', error);
@@ -67,6 +91,10 @@ class SendGridService {
 
   async sendFreeReport(toEmail, reportData) {
     if (!this.initialized) {
+      throw new InitializationError('SendGrid service not initialized');
+    }
+
+    try {
       const msg = {
         to: toEmail,
         from: this.fromEmail,
@@ -82,7 +110,6 @@ class SendGridService {
     } catch (error) {
       this.logger.error('SendGrid error', error);
       throw error;
-    }
   }
 }
 
