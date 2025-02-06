@@ -110,6 +110,7 @@ class SendGridService {
     } catch (error) {
       this.logger.error('SendGrid error', error);
       throw error;
+    }
   }
 }
 
