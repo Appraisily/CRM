@@ -33,18 +33,26 @@ class EmailService {
 
     this.logger.info('Starting Personal Offer Email Process', {
       recipient: toEmail,
-      hasDetailedAnalysis: !!analysisData?.detailedAnalysis,
-      hasVisualSearch: !!analysisData?.visualSearch,
-      hasOriginAnalysis: !!analysisData?.originAnalysis
+      initialState: {
+        hasDetailedAnalysis: !!analysisData?.detailedAnalysis,
+        hasVisualSearch: !!analysisData?.visualSearch,
+        hasOriginAnalysis: !!analysisData?.originAnalysis
+      }
     });
 
     try {
       // Wait for detailed analysis if needed
       if (!analysisData?.detailedAnalysis) {
-        console.log('Detailed analysis not available, waiting for results...');
+        this.logger.info('Analysis data not available, fetching from GCS...');
         const results = await analysisClient.getAnalysisResults(analysisData.sessionId);
         analysisData = { ...analysisData, ...results };
-        console.log('✓ Analysis results loaded');
+        this.logger.success('Analysis data loaded successfully', {
+          finalState: {
+            hasDetailedAnalysis: !!analysisData?.detailedAnalysis,
+            hasVisualSearch: !!analysisData?.visualSearch,
+            hasOriginAnalysis: !!analysisData?.originAnalysis
+          }
+        });
       }
 
       // Generate email content
@@ -58,7 +66,7 @@ class EmailService {
         scheduledTime
       );
       
-      console.log(scheduledTime ? 
+      this.logger.success(scheduledTime ? 
         `✓ Personal offer email scheduled for ${new Date(scheduledTime).toISOString()}` :
         '✓ Personal offer email sent immediately'
       );

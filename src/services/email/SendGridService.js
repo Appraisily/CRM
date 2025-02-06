@@ -7,20 +7,20 @@ class SendGridService {
   constructor() {
     this.initialized = false;
     this.fromEmail = null;
-    this.apiKey = 'SG.mock_key_for_testing_purposes_only';
+    this.apiKey = null;
     this.freeReportTemplateId = null;
     this.personalOfferTemplateId = null;
     this.logger = new Logger('SendGrid Service');
   }
 
   initialize(apiKey, fromEmail, freeReportTemplateId, personalOfferTemplateId) {
-    if (!fromEmail) {
-      throw new InitializationError('From email is required');
+    if (!apiKey || !fromEmail) {
+      throw new InitializationError('API key and from email are required');
     }
     
-    // Force using mock key for now
-    this.logger.info('Using mock SendGrid key for testing');
-    sgMail.setApiKey(this.apiKey);
+    this.logger.info('Initializing SendGrid with provided API key');
+    this.apiKey = apiKey;
+    sgMail.setApiKey(apiKey);
     this.fromEmail = fromEmail;
     this.freeReportTemplateId = freeReportTemplateId;
     this.personalOfferTemplateId = personalOfferTemplateId;
@@ -36,18 +36,31 @@ class SendGridService {
       throw new ValidationError('Email subject is required');
     }
 
-    // Always return mock success
-    this.logger.info('Mock SendGrid: Would send personal offer', { toEmail });
-    return {
-      success: true,
-      timestamp: Date.now(),
-      subject,
-      content,
-      contentLength: content.length,
-      recipient: toEmail,
-      scheduledTime,
-      mock: true
-    };
+    try {
+      const msg = {
+        to: toEmail,
+        from: this.fromEmail,
+        subject: subject,
+        html: content,
+        templateId: this.personalOfferTemplateId,
+        sendAt: scheduledTime ? Math.floor(scheduledTime / 1000) : undefined
+      };
+
+      await sgMail.send(msg);
+      
+      return {
+        success: true,
+        timestamp: Date.now(),
+        subject,
+        content,
+        contentLength: content.length,
+        recipient: toEmail,
+        scheduledTime
+      };
+    } catch (error) {
+      this.logger.error('SendGrid error sending personal offer', error);
+      throw error;
+    }
   }
 
   async sendFreeReport(toEmail, reportData) {
@@ -60,8 +73,15 @@ class SendGridService {
       const escapedReportData = this.escapeHtmlForSendGrid(reportData);
       const htmlContent = template.replace('{{free_report}}', escapedReportData);
       
-      // Always return mock success for now
-      this.logger.info('Mock SendGrid: Would send free report', { toEmail });
+      const msg = {
+        to: toEmail,
+        from: this.fromEmail,
+        subject: 'Your Free Art Analysis Report',
+        html: htmlContent,
+        templateId: this.freeReportTemplateId
+      };
+
+      await sgMail.send(msg);
       return true;
     } catch (error) {
       this.logger.error('SendGrid error', error);
