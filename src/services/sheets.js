@@ -1,4 +1,5 @@
 const { google } = require('googleapis');
+const Logger = require('../utils/logger');
 
 class SheetsService {
   constructor() {
@@ -6,6 +7,9 @@ class SheetsService {
     this.sheetsId = null;
     this.sheets = null;
     this.auth = null;
+    this.maxRetries = 3;
+    this.retryDelay = 1000; // 1 second
+    this.logger = new Logger('Sheets Service');
   }
 
   initialize(keyFilePath, sheetsId) {
@@ -34,11 +38,45 @@ class SheetsService {
     }
   }
 
+  async retryOperation(operation, retryCount = 0) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (retryCount < this.maxRetries && this.isRetryableError(error)) {
+        this.logger.info(`Retrying operation (${retryCount + 1}/${this.maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, this.retryDelay * (retryCount + 1)));
+        return this.retryOperation(operation, retryCount + 1);
+      }
+      throw error;
+    }
+  }
+
+  isRetryableError(error) {
+    const retryableErrors = [
+      'socket disconnected',
+      'ECONNRESET',
+      'ETIMEDOUT',
+      'ESOCKETTIMEDOUT',
+      'ECONNREFUSED',
+      'ENOTFOUND',
+      'ENETUNREACH',
+      'socket hang up',
+      'connect ETIMEDOUT',
+      'Client network socket disconnected'
+    ];
+
+    return retryableErrors.some(msg => 
+      error.message?.toLowerCase().includes(msg.toLowerCase())
+    );
+  }
+
   async findRowBySessionId(sessionId) {
-    const response = await this.sheets.spreadsheets.values.get({
-      spreadsheetId: this.sheetsId,
-      range: 'Sheet1!A:P',
-    });
+    const response = await this.retryOperation(() =>
+      this.sheets.spreadsheets.values.get({
+        spreadsheetId: this.sheetsId,
+        range: 'Sheet1!A:P',
+      })
+    );
 
     const rows = response.data.values || [];
     return rows.findIndex(row => row[1] === sessionId);
@@ -130,11 +168,11 @@ class SheetsService {
     }
 
     try {
-      console.log('Attempting to update free report status in Google Sheets...');
+      this.logger.info('Attempting to update free report status in Google Sheets...');
       
       const rowIndex = await this.findRowBySessionId(sessionId);
       if (rowIndex === -1) {
-        console.error(`Session ID ${sessionId} not found in spreadsheet`);
+        this.logger.error(`Session ID ${sessionId} not found in spreadsheet`);
         throw new Error(`Session ID ${sessionId} not found in spreadsheet`);
       }
 
@@ -142,26 +180,28 @@ class SheetsService {
       const status = success ? 
         'Free Report Sent' : 
         `Free Report Failed: ${errorMessage || 'Unknown error'}`;
-      await this.sheets.spreadsheets.values.batchUpdate({
-        spreadsheetId: this.sheetsId,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: {
-          data: [
-            {
-              range: `Sheet1!K${rowIndex + 1}:L${rowIndex + 1}`,
-              values: [[
-                status,
-                currentTime
-              ]]
-            }
-          ]
-        }
-      });
+      await this.retryOperation(() =>
+        this.sheets.spreadsheets.values.batchUpdate({
+          spreadsheetId: this.sheetsId,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: {
+            data: [
+              {
+                range: `Sheet1!K${rowIndex + 1}:L${rowIndex + 1}`,
+                values: [[
+                  status,
+                  currentTime
+                ]]
+              }
+            ]
+          }
+        })
+      );
 
-      console.log('Successfully updated free report status in sheets');
+      this.logger.success('Successfully updated free report status in sheets');
       return true;
     } catch (error) {
-      console.error('Error updating free report status in sheets:', error);
+      this.logger.error('Error updating free report status in sheets', error);
       throw error;
     }
   }
