@@ -1,7 +1,7 @@
 const emailService = require('../email');
 const pubSubService = require('../pubsub');
 const Logger = require('../../utils/logger');
-const { ValidationError } = require('../../utils/errors');
+const { ValidationError, ProcessingError } = require('../../utils/errors');
 
 const validateScreenerNotification = (data) => {
   const requiredFields = {
@@ -46,26 +46,18 @@ class MessageHandler {
   async handleMessage(message) {
     try {
       this.logger.info('Processing PubSub Message');
-      let data;
-      
-      try {
-        data = typeof message.data === 'string' ? 
-          JSON.parse(message.data) :
-          JSON.parse(message.data.toString());
-      } catch (parseError) {
-        this.logger.error('Failed to parse message', parseError);
-        await pubSubService.publishToDLQ(message, parseError);
-        if (message.nack) message.nack();
-        return false;
       
       // Validate message structure
       if (!message || !message.data) {
         throw new ValidationError('Invalid message structure: missing data');
       }
       
+      // Parse message data
       let data;
       try {
-        data = JSON.parse(Buffer.from(message.data, 'base64').toString());
+        data = typeof message.data === 'string' ? 
+          JSON.parse(message.data) :
+          JSON.parse(message.data.toString());
       } catch (parseError) {
         throw new ValidationError(`Failed to parse message data: ${parseError.message}`);
       }
@@ -89,6 +81,7 @@ class MessageHandler {
         throw new ValidationError(`Invalid message format: ${validation.errors.join(', ')}`);
       }
 
+      // Process the message
       let result;
       try {
         result = await emailService.handleScreenerNotification({
