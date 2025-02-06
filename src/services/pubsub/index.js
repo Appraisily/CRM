@@ -33,8 +33,33 @@ class PubSubService {
       }
 
       // Set up message handling
-      this.subscription.on('message', this._handleMessage.bind(this));
-      this.subscription.on('error', this._handleError.bind(this));
+      const options = {
+        flowControl: {
+          maxMessages: 1,
+          allowExcessMessages: false
+        },
+        batching: {
+          maxMessages: 1,
+          maxMilliseconds: 100
+        }
+      };
+
+      this.subscription.on('message', async (message) => {
+        try {
+          await this._handleMessage(message);
+        } catch (error) {
+          this.logger.error('Error handling message', error);
+        }
+      });
+
+      this.subscription.on('error', (error) => {
+        this.logger.error('Subscription error', error);
+        // Don't throw, just log the error to prevent crash
+      });
+
+      this.subscription.on('close', () => {
+        this.logger.info('Subscription closed');
+      });
       
       this.logger.success('PubSub service initialized successfully');
       this.logger.end();
@@ -47,26 +72,24 @@ class PubSubService {
   async _handleMessage(message) {
     try {
       await this.messageHandler(message);
-      message.ack();
       this.logger.success('Message processed and acknowledged');
+      message.ack();
     } catch (error) {
       this.logger.error('Error in message handler', error);
       message.nack();
+      throw error; // Re-throw to be caught by the outer handler
     }
-  }
-
-  _handleError(error) {
-    this.logger.error('Subscription error', error);
   }
 
   async shutdown() {
     if (this.subscription) {
       try {
+        this.logger.info('Closing PubSub subscription...');
         await this.subscription.close();
         this.logger.success('PubSub subscription closed successfully');
       } catch (error) {
         this.logger.error('Error closing PubSub subscription', error);
-        throw new ProcessingError(`Failed to close subscription: ${error.message}`);
+        // Don't throw on shutdown, just log the error
       }
     }
   }
