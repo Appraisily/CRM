@@ -19,6 +19,14 @@ app.set('trust proxy', 1);
 
 app.use(corsMiddleware);
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: Date.now()
+  });
+});
+
 // Initialize application
 const init = async () => {
   try {
