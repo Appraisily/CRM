@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_INSTANCE_UNIX_SOCKET")
+}
+
+// Enums
+enum ActivityType {
+  chat
+  email
+  purchase
+  appraisal
+  website_visit
+}
+
+enum ActivityStatus {
+  started
+  completed
+  abandoned
+}
+
+enum ChatStatus {
+  active
+  closed
+}
+
+enum PurchaseStatus {
+  pending
+  completed
+  refunded
+  failed
+}
+
+enum ServiceType {
+  professional_appraisal
+  quick_assessment
+  consultation
+}
+
+enum AppraisalStatus {
+  pending
+  completed
+  failed
+}
+
+enum EmailType {
+  inquiry
+  support
+  report
+  offer
+}
+
+enum EmailStatus {
+  sent
+  delivered
+  opened
+  clicked
+  replied
+}
+
+// Models
+model User {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email           String    @unique
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  lastActivity    DateTime  @default(now()) @map("last_activity") @db.Timestamptz
+  
+  // Relations
+  activities      UserActivity[]
+  chatSessions    ChatSession[]
+  purchases       Purchase[]
+  appraisals      Appraisal[]
+  emailInteractions EmailInteraction[]
+
+  @@map("users")
+}
+
+model UserActivity {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String        @map("user_id") @db.Uuid
+  activityType ActivityType @map("activity_type")
+  status      ActivityStatus
+  metadata    Json         @default("{}")
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime     @default(now()) @map("updated_at") @db.Timestamptz
+  
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_activities")
+}
+
+model ChatSession {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String      @map("user_id") @db.Uuid
+  agentId     String?     @map("agent_id")
+  status      ChatStatus
+  startedAt   DateTime    @default(now()) @map("started_at") @db.Timestamptz
+  endedAt     DateTime?   @map("ended_at") @db.Timestamptz
+  transcript  String?
+  satisfactionScore Int?  @map("satisfaction_score")
+  
+  // Relations
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("chat_sessions")
+}
+
+model Purchase {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String        @map("user_id") @db.Uuid
+  serviceType   ServiceType   @map("service_type")
+  amount        Decimal
+  currency      String        @default("USD")
+  status        PurchaseStatus
+  paymentMethod String?       @map("payment_method")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  completedAt   DateTime?     @map("completed_at") @db.Timestamptz
+  
+  // Relations
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("purchases")
+}
+
+model Appraisal {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String          @map("user_id") @db.Uuid
+  sessionId     String          @map("session_id") @db.Uuid
+  imageUrl      String          @map("image_url")
+  status        AppraisalStatus
+  resultSummary Json           @default("{}") @map("result_summary")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  completedAt   DateTime?      @map("completed_at") @db.Timestamptz
+  
+  // Relations
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("appraisals")
+}
+
+model EmailInteraction {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String      @map("user_id") @db.Uuid
+  type        EmailType
+  subject     String
+  content     String
+  status      EmailStatus
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime    @default(now()) @map("updated_at") @db.Timestamptz
+  
+  // Relations
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_interactions")
+}

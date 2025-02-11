@@ -4,6 +4,7 @@ const corsMiddleware = require('./src/middleware/cors');
 const cloudServices = require('./src/services/storage');
 const emailService = require('./src/services/email');
 const sheetsService = require('./src/services/sheets');
+const databaseService = require('./src/services/database');
 const encryption = require('./src/services/encryption');
 const pubSubService = require('./src/services/pubsub');
 const messageHandler = require('./src/services/message/handler');
@@ -32,6 +33,10 @@ const init = async () => {
   try {
     logger.info('Starting CRM service initialization');
     const { secrets, keyFilePath } = await loadSecrets();
+
+    // Initialize database service
+    logger.info('Initializing database service');
+    databaseService.initialize();
 
     // Initialize cloud storage service
     logger.info('Initializing cloud storage service');
@@ -88,6 +93,7 @@ const init = async () => {
   const handleShutdown = async (signal) => {
     logger.info(`${signal} received. Starting graceful shutdown...`);
     try {
+      await databaseService.disconnect();
       await pubSubService.shutdown();
       logger.success('PubSub subscription closed successfully');
       process.exit(0);
