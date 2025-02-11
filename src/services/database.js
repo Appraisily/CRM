@@ -1,13 +1,17 @@
 const { Pool } = require('pg');
 const Logger = require('../utils/logger');
+const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
+
+const PROJECT_ID = 'civil-forge-403609';
 
 class DatabaseService {
   constructor() {
     this.pool = null;
     this.logger = new Logger('Database Service');
+    this.secretClient = new SecretManagerServiceClient();
   }
 
-  initialize() {
+  async initialize() {
     try {
       this.logger.info('Initializing database connection');
       
@@ -19,10 +23,16 @@ class DatabaseService {
         throw new Error('INSTANCE_CONNECTION_NAME environment variable is required');
       }
 
+      // Get DB password from Secret Manager
+      this.logger.info('Retrieving database password from Secret Manager');
+      const name = `projects/${PROJECT_ID}/secrets/DB_PASSWORD/versions/latest`;
+      const [version] = await this.secretClient.accessSecretVersion({ name });
+      const dbPassword = version.payload.data.toString('utf8');
+
       // Configure connection pool
       this.pool = new Pool({
         user: 'postgres',
-        password: process.env.DB_PASSWORD,
+        password: dbPassword,
         database: 'appraisily_activity_db',
         host: `${instanceUnixSocket}/${instanceConnectionName}`,
         port: 5432,

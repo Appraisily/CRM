@@ -36,7 +36,7 @@ const init = async () => {
 
     // Initialize database service
     logger.info('Initializing database service');
-    databaseService.initialize();
+    await databaseService.initialize();
 
     // Initialize cloud storage service
     logger.info('Initializing cloud storage service');
