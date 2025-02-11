@@ -1,9 +1,9 @@
-const { PrismaClient } = require('@prisma/client');
+const { Pool } = require('pg');
 const Logger = require('../utils/logger');
 
 class DatabaseService {
   constructor() {
-    this.client = null;
+    this.pool = null;
     this.logger = new Logger('Database Service');
   }
 
@@ -19,36 +19,46 @@ class DatabaseService {
         throw new Error('INSTANCE_CONNECTION_NAME environment variable is required');
       }
 
-      // Configure Prisma to use Unix socket
-      const socketPath = `${instanceUnixSocket}/${instanceConnectionName}`;
-      
-      this.client = new PrismaClient({
-        datasources: {
-          db: {
-            url: `postgresql://postgres:${process.env.DB_PASSWORD}@localhost:5432/appraisily_activity_db?host=${socketPath}`
-          }
+      // Configure connection pool
+      this.pool = new Pool({
+        user: 'postgres',
+        password: process.env.DB_PASSWORD,
+        database: 'appraisily_activity_db',
+        host: `${instanceUnixSocket}/${instanceConnectionName}`,
+        port: 5432,
+        max: 20, // Maximum number of clients in the pool
+        idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+        connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
+      });
+
+      // Test the connection
+      this.pool.query('SELECT NOW()', (err, res) => {
+        if (err) {
+          this.logger.error('Error testing database connection', err);
+        } else {
+          this.logger.success('Database connection test successful');
         }
       });
 
-      this.logger.success('Database connection initialized');
+      this.logger.success('Database connection pool initialized');
     } catch (error) {
       this.logger.error('Failed to initialize database connection', error);
       throw error;
     }
   }
 
-  getClient() {
-    if (!this.client) {
-      throw new Error('Database client not initialized');
+  async query(text, params) {
+    if (!this.pool) {
+      throw new Error('Database pool not initialized');
     }
-    return this.client;
+    return this.pool.query(text, params);
   }
 
   async disconnect() {
-    if (this.client) {
+    if (this.pool) {
       try {
         this.logger.info('Disconnecting from database');
-        await this.client.$disconnect();
+        await this.pool.end();
         this.logger.success('Database disconnected successfully');
       } catch (error) {
         this.logger.error('Error disconnecting from database', error);
