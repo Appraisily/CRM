@@ -1,161 +1,16 @@
-const emailService = require('../email');
-const pubSubService = require('../pubsub');
-const databaseService = require('../database');
-const chatSummaryProcessor = require('./ChatSummaryProcessor');
-const gmailProcessor = require('./GmailProcessor');
 const Logger = require('../../utils/logger');
+const ProcessorFactory = require('./processors/ProcessorFactory');
+const { 
+  validateScreenerNotification,
+  validateChatSummary,
+  validateGmailInteraction
+} = require('./validators');
 const { ValidationError, ProcessingError } = require('../../utils/errors');
-
-const validateScreenerNotification = (data) => {
-  const requiredFields = {
-    crmProcess: 'string',
-    customer: 'object',
-    sessionId: 'string',
-    metadata: 'object',
-    timestamp: 'number'
-  };
-
-  const errors = [];
-
-  // Check all required fields
-  for (const [field, type] of Object.entries(requiredFields)) {
-    if (!data[field]) {
-      errors.push(`Missing required field: ${field}`);
-    } else if (typeof data[field] !== type) {
-      errors.push(`Invalid type for ${field}: expected ${type}, got ${typeof data[field]}`);
-    }
-  }
-
-  // Additional customer object validation
-  if (data.customer && typeof data.customer === 'object') {
-    if (!data.customer.email) {
-      errors.push('Missing required field: customer.email');
-    } else if (typeof data.customer.email !== 'string') {
-      errors.push('Invalid type for customer.email: expected string');
-    }
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
-};
-
-const validateChatSummary = (data) => {
-  const requiredFields = {
-    crmProcess: 'string',
-    customer: 'object',
-    chat: 'object',
-    metadata: 'object'
-  };
-
-  const chatFields = {
-    sessionId: 'string',
-    startedAt: 'string',
-    endedAt: 'string',
-    messageCount: 'number',
-    satisfactionScore: 'number',
-    summary: 'string',
-    topics: 'object',
-    sentiment: 'string'
-  };
-
-  const errors = [];
-
-  // Check top-level fields
-  for (const [field, type] of Object.entries(requiredFields)) {
-    if (!data[field]) {
-      errors.push(`Missing required field: ${field}`);
-    } else if (typeof data[field] !== type) {
-      errors.push(`Invalid type for ${field}: expected ${type}, got ${typeof data[field]}`);
-    }
-  }
-
-  // Check chat object fields
-  if (data.chat && typeof data.chat === 'object') {
-    for (const [field, type] of Object.entries(chatFields)) {
-      if (!data.chat[field]) {
-        errors.push(`Missing required field: chat.${field}`);
-      } else if (type === 'object' ? !Array.isArray(data.chat[field]) : typeof data.chat[field] !== type) {
-        errors.push(`Invalid type for chat.${field}: expected ${type}`);
-      }
-    }
-  }
-
-  // Validate customer email
-  if (data.customer && typeof data.customer === 'object') {
-    if (!data.customer.email) {
-      errors.push('Missing required field: customer.email');
-    } else if (typeof data.customer.email !== 'string') {
-      errors.push('Invalid type for customer.email: expected string');
-    }
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
-};
-
-const validateGmailInteraction = (data) => {
-  const requiredFields = {
-    crmProcess: 'string',
-    customer: 'object',
-    email: 'object',
-    metadata: 'object'
-  };
-
-  const emailFields = {
-    messageId: 'string',
-    threadId: 'string',
-    subject: 'string',
-    content: 'string',
-    timestamp: 'string',
-    classification: 'object',
-    attachments: 'object',
-    response: 'object'
-  };
-
-  const errors = [];
-
-  // Check top-level fields
-  for (const [field, type] of Object.entries(requiredFields)) {
-    if (!data[field]) {
-      errors.push(`Missing required field: ${field}`);
-    } else if (typeof data[field] !== type) {
-      errors.push(`Invalid type for ${field}: expected ${type}, got ${typeof data[field]}`);
-    }
-  }
-
-  // Check email object fields
-  if (data.email && typeof data.email === 'object') {
-    for (const [field, type] of Object.entries(emailFields)) {
-      if (!data.email[field]) {
-        errors.push(`Missing required field: email.${field}`);
-      } else if (typeof data.email[field] !== type) {
-        errors.push(`Invalid type for email.${field}: expected ${type}`);
-      }
-    }
-  }
-
-  // Validate customer email
-  if (data.customer && typeof data.customer === 'object') {
-    if (!data.customer.email) {
-      errors.push('Missing required field: customer.email');
-    } else if (typeof data.customer.email !== 'string') {
-      errors.push('Invalid type for customer.email: expected string');
-    }
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
-};
 
 class MessageHandler {
   constructor() {
     this.logger = new Logger('Message Handler');
+    this.processorFactory = new ProcessorFactory();
   }
 
   async handleMessage(message) {
@@ -177,46 +32,36 @@ class MessageHandler {
 
       } catch (parseError) {
         throw new ValidationError(`Failed to parse message data: ${parseError.message}`);
+      }
       
       // Validate message content
       let validation;
       
-      if (data.crmProcess === 'screenerNotification') {
-        validation = validateScreenerNotification(data);
-      } else if (data.crmProcess === 'chatSummary') {
-        validation = validateChatSummary(data);
-      } else if (data.crmProcess === 'gmailInteraction') {
-        validation = validateGmailInteraction(data);
-      } else {
+      const validators = {
+        screenerNotification: validateScreenerNotification,
+        chatSummary: validateChatSummary,
+        gmailInteraction: validateGmailInteraction
+      };
+
+      const validator = validators[data.crmProcess];
+      if (!validator) {
         throw new ValidationError(`Unknown crmProcess: ${data.crmProcess}`);
       }
 
+      validation = validator(data);
       if (!validation.isValid) {
         throw new ValidationError(`Invalid message format: ${validation.errors.join(', ')}`);
       }
 
-      let result;
-
-      if (data.crmProcess === 'screenerNotification') {
-        result = await emailService.handleScreenerNotification({
-          customer: data.customer,
-          sessionId: data.sessionId,
-          metadata: data.metadata,
-          timestamp: data.timestamp,
-          origin: data.origin
-        });
-      } else if (data.crmProcess === 'chatSummary') {
-        result = await chatSummaryProcessor.processChatSummary(data);
-      } else if (data.crmProcess === 'gmailInteraction') {
-        result = await gmailProcessor.processGmailInteraction(data);
-      }
+      // Get appropriate processor and process message
+      const processor = this.processorFactory.getProcessor(data.crmProcess);
+      const result = await processor.process(data);
 
       if (!result.success) {
         throw new ProcessingError(result.error || 'Processing failed without specific error');
       }
 
       return result.success;
-
     } catch (error) {
       this.logger.error('Error processing message', error);
       throw error;
