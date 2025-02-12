@@ -10,6 +10,60 @@ This service is part of a microservices architecture where:
 - Communication workflows are triggered by Google Cloud PubSub messages using a pull subscription
 - All customer data and interaction history are tracked in Google Sheets
 - Secure message handling with automatic retries and error recovery
+- RESTful API for customer data access with authentication and rate limiting
+
+## Customer Data API
+
+The service provides a secure REST API for accessing customer data:
+
+### Authentication
+- Requires API key in `x-api-key` header
+- Keys are managed in Secret Manager
+- Rate limited to 100 requests per 15 minutes per IP
+
+### Endpoints
+
+1. **Get Customer Profile**
+   ```http
+   GET /api/customers/:email
+   ```
+   Returns aggregated customer data including:
+   - Basic information
+   - Total purchases and amount spent
+   - Number of appraisals
+   - Chat and email interaction counts
+
+2. **Get Customer Activities**
+   ```http
+   GET /api/customers/:email/activities
+   ```
+   Returns paginated activity history with:
+   - Activity type and status
+   - Timestamps
+   - Associated metadata
+   Query parameters:
+   - `limit`: Number of records (default: 10)
+   - `offset`: Pagination offset
+
+3. **Get Customer Purchases**
+   ```http
+   GET /api/customers/:email/purchases
+   ```
+   Returns purchase history including:
+   - Service type
+   - Amount and currency
+   - Payment status
+   - Timestamps
+
+4. **Get Customer Appraisals**
+   ```http
+   GET /api/customers/:email/appraisals
+   ```
+   Returns appraisal history with:
+   - Session IDs
+   - Status
+   - Results summary
+   - Timestamps
 
 ### Message Types
 
@@ -208,6 +262,7 @@ The service implements a robust pull subscription pattern:
 - Email delivery status monitoring
 - Communication history logging
 - Activity tracking in PostgreSQL database
+- API access monitoring and rate limiting
 - Real-time status updates
 - Automated sheet updates for all processes
 
@@ -302,6 +357,10 @@ P: Offer Content
 ### Environment Variables
 - `PORT`: Server port (default: 8080)
 - `PUBSUB_SUBSCRIPTION_NAME`: Name of the PubSub subscription to pull messages from
+- `DB_USER`: Database user (default: postgres)
+- `DB_NAME`: Database name (default: appraisily_activity_db)
+- `DB_SOCKET_PATH`: Unix socket path for Cloud SQL
+- `INSTANCE_CONNECTION_NAME`: Cloud SQL instance connection name
 
 ### Google Cloud Secret Manager Secrets
 - `EMAIL_ENCRYPTION_KEY`
@@ -315,6 +374,8 @@ P: Offer Content
 - `GCS_BUCKET_NAME`
 - `OPENAI_API_KEY`
 - `service-account-json`
+- `DB_PASSWORD`: Database password
+- `API_KEYS`: JSON array of valid API keys and permissions
 
 ## Development
 
@@ -353,6 +414,7 @@ The service implements comprehensive error handling:
 - Message validation errors are logged and messages are nacked
 - Processing errors trigger automatic retries
 - Failed messages can be sent to a Dead Letter Queue (DLQ) if configured
+- API rate limiting and authentication errors
 - All errors are logged with full stack traces and context
 - Graceful shutdown ensures no messages are lost
 - Dead Letter Queue monitoring for failed messages
@@ -364,4 +426,5 @@ Monitor the service using:
 - Google Cloud Logging for application logs
 - Google Sheets for process tracking
 - SendGrid dashboard for email delivery status
+- API access and rate limit metrics
 - Cloud Run metrics for service health

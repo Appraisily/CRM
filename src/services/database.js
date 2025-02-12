@@ -36,16 +36,18 @@ class DatabaseService {
         database: process.env.DB_NAME || 'appraisily_activity_db',
         max: 10, // Reduce max connections
         idleTimeoutMillis: 10000, // Reduce idle timeout to 10 seconds
-        connectionTimeoutMillis: 5000, // Increase connection timeout to 5 seconds
-        maxUses: 7500, // Recycle connections after 7500 queries
-        ssl: process.env.NODE_ENV === 'production'
+        connectionTimeoutMillis: 5000 // Increase connection timeout to 5 seconds
       };
 
       // Add Unix socket configuration if running in Cloud Run
       if (instanceConnectionName) {
         config.host = `${instanceUnixSocket}/${instanceConnectionName}`;
+        // Disable SSL for Unix socket connections
+        config.ssl = false;
         this.logger.info('Using Unix socket connection');
       } else {
+        // Enable SSL only for TCP connections
+        config.ssl = process.env.NODE_ENV === 'production';
         this.logger.info('Using TCP connection');
       }
 
