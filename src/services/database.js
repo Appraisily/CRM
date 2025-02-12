@@ -42,11 +42,29 @@ class DatabaseService {
       });
 
       // Test the connection
-      this.pool.query('SELECT NOW()', (err, res) => {
+      await this.pool.query('SELECT NOW()', async (err, res) => {
         if (err) {
           this.logger.error('Error testing database connection', err);
         } else {
           this.logger.success('Database connection test successful');
+          
+          // Check for existing tables
+          try {
+            const tableQuery = `
+              SELECT table_name 
+              FROM information_schema.tables 
+              WHERE table_schema = 'public'
+              ORDER BY table_name;
+            `;
+            const { rows } = await this.pool.query(tableQuery);
+            
+            this.logger.info('Database tables found:', {
+              tableCount: rows.length,
+              tables: rows.map(row => row.table_name)
+            });
+          } catch (error) {
+            this.logger.error('Error checking database tables', error);
+          }
         }
       });
 

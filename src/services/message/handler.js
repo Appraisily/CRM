@@ -1,5 +1,6 @@
 const emailService = require('../email');
 const pubSubService = require('../pubsub');
+const databaseService = require('../database');
 const Logger = require('../../utils/logger');
 const { ValidationError, ProcessingError } = require('../../utils/errors');
 
@@ -72,6 +73,44 @@ class MessageHandler {
       }
 
       // Process the message
+      // First, record the interaction in the database
+      try {
+        // Create or get user
+        const userResult = await databaseService.query(
+          `INSERT INTO users (email) 
+           VALUES ($1)
+           ON CONFLICT (email) DO UPDATE 
+           SET last_activity = NOW()
+           RETURNING id`,
+          [data.customer.email]
+        );
+        
+        const userId = userResult.rows[0].id;
+        
+        // Record the activity
+        await databaseService.query(
+          `INSERT INTO user_activities 
+           (user_id, activity_type, status, metadata) 
+           VALUES ($1, $2, $3, $4)`,
+          [
+            userId,
+            'email',
+            'completed',
+            {
+              sessionId: data.sessionId,
+              origin: data.origin || 'screener',
+              timestamp: data.timestamp,
+              metadata: data.metadata
+            }
+          ]
+        );
+        
+        this.logger.success('Interaction recorded in database');
+      } catch (dbError) {
+        this.logger.error('Failed to record interaction in database', dbError);
+        // Continue with processing even if DB recording fails
+      }
+
       const result = await emailService.handleScreenerNotification({
         customer: data.customer,
         sessionId: data.sessionId,
