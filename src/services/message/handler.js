@@ -2,6 +2,7 @@ const emailService = require('../email');
 const pubSubService = require('../pubsub');
 const databaseService = require('../database');
 const chatSummaryProcessor = require('./ChatSummaryProcessor');
+const gmailProcessor = require('./GmailProcessor');
 const Logger = require('../../utils/logger');
 const { ValidationError, ProcessingError } = require('../../utils/errors');
 
@@ -96,6 +97,62 @@ const validateChatSummary = (data) => {
   };
 };
 
+const validateGmailInteraction = (data) => {
+  const requiredFields = {
+    crmProcess: 'string',
+    customer: 'object',
+    email: 'object',
+    metadata: 'object'
+  };
+
+  const emailFields = {
+    messageId: 'string',
+    threadId: 'string',
+    subject: 'string',
+    content: 'string',
+    timestamp: 'string',
+    classification: 'object',
+    attachments: 'object',
+    response: 'object'
+  };
+
+  const errors = [];
+
+  // Check top-level fields
+  for (const [field, type] of Object.entries(requiredFields)) {
+    if (!data[field]) {
+      errors.push(`Missing required field: ${field}`);
+    } else if (typeof data[field] !== type) {
+      errors.push(`Invalid type for ${field}: expected ${type}, got ${typeof data[field]}`);
+    }
+  }
+
+  // Check email object fields
+  if (data.email && typeof data.email === 'object') {
+    for (const [field, type] of Object.entries(emailFields)) {
+      if (!data.email[field]) {
+        errors.push(`Missing required field: email.${field}`);
+      } else if (typeof data.email[field] !== type) {
+        errors.push(`Invalid type for email.${field}: expected ${type}`);
+      }
+    }
+  }
+
+  // Validate customer email
+  if (data.customer && typeof data.customer === 'object') {
+    if (!data.customer.email) {
+      errors.push('Missing required field: customer.email');
+    } else if (typeof data.customer.email !== 'string') {
+      errors.push('Invalid type for customer.email: expected string');
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+};
+
 class MessageHandler {
   constructor() {
     this.logger = new Logger('Message Handler');
@@ -130,6 +187,8 @@ class MessageHandler {
         validation = validateScreenerNotification(data);
       } else if (data.crmProcess === 'chatSummary') {
         validation = validateChatSummary(data);
+      } else if (data.crmProcess === 'gmailInteraction') {
+        validation = validateGmailInteraction(data);
       } else {
         throw new ValidationError(`Unknown crmProcess: ${data.crmProcess}`);
       }
@@ -150,6 +209,8 @@ class MessageHandler {
         });
       } else if (data.crmProcess === 'chatSummary') {
         result = await chatSummaryProcessor.processChatSummary(data);
+      } else if (data.crmProcess === 'gmailInteraction') {
+        result = await gmailProcessor.processGmailInteraction(data);
       }
 
       if (!result.success) {
