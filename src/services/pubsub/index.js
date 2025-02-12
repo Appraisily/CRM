@@ -84,7 +84,9 @@ class PubSubService {
     try {
       this.logger.info('Received message', {
         messageId: message.id,
-        publishTime: message.publishTime
+        publishTime: message.publishTime,
+        data: message.data.toString(),
+        attributes: message.attributes
       });
       
       // Always parse and validate message before processing

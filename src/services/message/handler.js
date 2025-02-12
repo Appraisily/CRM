@@ -168,17 +168,15 @@ class MessageHandler {
         data = typeof message.data === 'string' ? 
           JSON.parse(message.data) :
           JSON.parse(message.data.toString());
+
+        // Log complete message data
+        this.logger.info('Complete message data:', {
+          ...data,
+          rawData: message.data.toString()
+        });
+
       } catch (parseError) {
         throw new ValidationError(`Failed to parse message data: ${parseError.message}`);
-      }
-
-      this.logger.info('Parsed message data:', {
-        crmProcess: data.crmProcess,
-        sessionId: data.sessionId,
-        hasCustomer: !!data.customer,
-        hasMetadata: !!data.metadata,
-        timestamp: data.timestamp
-      });
       
       // Validate message content
       let validation;
