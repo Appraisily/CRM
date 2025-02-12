@@ -1,6 +1,7 @@
 const express = require('express');
 const { loadSecrets } = require('./src/config/secrets');
 const corsMiddleware = require('./src/middleware/cors');
+const customerRoutes = require('./src/routes/customers');
 const cloudServices = require('./src/services/storage');
 const emailService = require('./src/services/email');
 const sheetsService = require('./src/services/sheets');
@@ -19,6 +20,9 @@ app.use(express.json());
 app.set('trust proxy', 1);
 
 app.use(corsMiddleware);
+
+// API Routes
+app.use('/api/customers', customerRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
