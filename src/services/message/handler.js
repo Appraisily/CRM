@@ -4,7 +4,8 @@ const {
   validateScreenerNotification,
   validateChatSummary,
   validateGmailInteraction,
-  validateAppraisalRequest
+  validateAppraisalRequest,
+  validateStripePayment
 } = require('./validators');
 const { ValidationError, ProcessingError } = require('../../utils/errors');
 
@@ -42,7 +43,8 @@ class MessageHandler {
         screenerNotification: validateScreenerNotification,
         chatSummary: validateChatSummary,
         gmailInteraction: validateGmailInteraction,
-        appraisalRequest: validateAppraisalRequest
+        appraisalRequest: validateAppraisalRequest,
+        stripePayment: validateStripePayment
       };
 
       const validator = validators[data.crmProcess];

@@ -11,6 +11,157 @@ This service is part of a microservices architecture where:
 - All customer data and interaction history are tracked in Google Sheets
 - Secure message handling with automatic retries and error recovery
 
+### Message Types
+
+The service processes the following PubSub message types:
+
+1. **Screener Notification** (`screenerNotification`)
+   - Triggered when a user submits an image for initial screening
+   - Sends free analysis report and schedules personal offer
+   - Fields:
+     ```json
+     {
+       "crmProcess": "screenerNotification",
+       "customer": {
+         "email": "string",
+         "name": "string"
+       },
+       "sessionId": "uuid",
+       "metadata": {
+         "imageUrl": "string",
+         "timestamp": "number"
+       }
+     }
+     ```
+
+2. **Chat Summary** (`chatSummary`)
+   - Records completed chat session details
+   - Stores transcript and satisfaction score
+   - Fields:
+     ```json
+     {
+       "crmProcess": "chatSummary",
+       "customer": {
+         "email": "string"
+       },
+       "chat": {
+         "sessionId": "string",
+         "startedAt": "string",
+         "endedAt": "string",
+         "messageCount": "number",
+         "satisfactionScore": "number",
+         "summary": "string",
+         "topics": "string[]",
+         "sentiment": "string"
+       },
+       "metadata": {
+         "agentId": "string",
+         "origin": "string"
+       }
+     }
+     ```
+
+3. **Gmail Interaction** (`gmailInteraction`)
+   - Processes email interactions from Gmail
+   - Records email content and classification
+   - Fields:
+     ```json
+     {
+       "crmProcess": "gmailInteraction",
+       "customer": {
+         "email": "string",
+         "name": "string"
+       },
+       "email": {
+         "messageId": "string",
+         "threadId": "string",
+         "subject": "string",
+         "content": "string",
+         "timestamp": "string",
+         "classification": {
+           "intent": "string",
+           "urgency": "string",
+           "responseType": "string",
+           "requiresReply": "boolean"
+         }
+       },
+       "metadata": {
+         "labels": "string[]",
+         "processingTime": "number"
+       }
+     }
+     ```
+
+4. **Appraisal Request** (`appraisalRequest`)
+   - Handles professional appraisal requests
+   - Records appraisal details and generates documents
+   - Fields:
+     ```json
+     {
+       "crmProcess": "appraisalRequest",
+       "customer": {
+         "email": "string",
+         "name": "string"
+       },
+       "appraisal": {
+         "serviceType": "string",
+         "sessionId": "string",
+         "requestDate": "string",
+         "status": "string",
+         "editLink": "string",
+         "images": {
+           "description": "string",
+           "customerDescription": "string",
+           "appraisersDescription": "string",
+           "finalDescription": "string"
+         },
+         "value": {
+           "amount": "number",
+           "currency": "string",
+           "range": {
+             "min": "number",
+             "max": "number"
+           }
+         }
+       },
+       "metadata": {
+         "origin": "string",
+         "timestamp": "number"
+       }
+     }
+     ```
+
+5. **Stripe Payment** (`stripePayment`)
+   - Records completed purchases and payment information
+   - Updates user purchase history and activity
+   - Fields:
+     ```json
+     {
+       "crmProcess": "stripePayment",
+       "customer": {
+         "email": "string",
+         "name": "string",
+         "stripeCustomerId": "string"
+       },
+       "payment": {
+         "checkoutSessionId": "string",
+         "paymentIntentId": "string",
+         "amount": "number",
+         "currency": "string",
+         "status": "string",
+         "metadata": {
+           "serviceType": "string",
+           "sessionId": "string"
+         }
+       },
+       "metadata": {
+         "origin": "string",
+         "environment": "string",
+         "timestamp": "number"
+       }
+     }
+     ```
+
 ### Pull Subscription Model
 
 The service implements a robust pull subscription pattern:
@@ -37,6 +188,15 @@ The service implements a robust pull subscription pattern:
 - Smart retry logic for failed communications
 - Rate-limited submissions
 
+### Message Processing
+- Validation for each message type
+- Processor factory pattern for message handling
+- Dead Letter Queue (DLQ) for failed messages
+- Automatic retries with exponential backoff
+- Comprehensive error logging and monitoring
+- Smart retry logic for failed communications
+- Rate-limited submissions
+
 ### Security & Privacy
 - Email encryption using AES-256-GCM
 - Argon2 password hashing for secure storage
@@ -47,6 +207,8 @@ The service implements a robust pull subscription pattern:
 - Customer interaction tracking in Google Sheets
 - Email delivery status monitoring
 - Communication history logging
+- Activity tracking in PostgreSQL database
+- Real-time status updates
 - Automated sheet updates for all processes
 
 ## Message Processing Flow
@@ -191,8 +353,10 @@ The service implements comprehensive error handling:
 - Message validation errors are logged and messages are nacked
 - Processing errors trigger automatic retries
 - Failed messages can be sent to a Dead Letter Queue (DLQ) if configured
-- All errors are logged with full stack traces
+- All errors are logged with full stack traces and context
 - Graceful shutdown ensures no messages are lost
+- Dead Letter Queue monitoring for failed messages
+- Database connection pool metrics
 
 ## Monitoring
 

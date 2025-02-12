@@ -2,6 +2,7 @@ const ScreenerProcessor = require('./ScreenerProcessor');
 const ChatSummaryProcessor = require('./ChatSummaryProcessor');
 const GmailProcessor = require('./GmailProcessor');
 const AppraisalProcessor = require('./AppraisalProcessor');
+const StripePaymentProcessor = require('./StripePaymentProcessor');
 const { ValidationError } = require('../../../utils/errors');
 
 class ProcessorFactory {
@@ -10,7 +11,8 @@ class ProcessorFactory {
       screenerNotification: new ScreenerProcessor(),
       chatSummary: new ChatSummaryProcessor(),
       gmailInteraction: new GmailProcessor(),
-      appraisalRequest: new AppraisalProcessor()
+      appraisalRequest: new AppraisalProcessor(),
+      stripePayment: new StripePaymentProcessor()
     };
   }
 
