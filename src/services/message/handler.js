@@ -3,7 +3,8 @@ const ProcessorFactory = require('./processors/ProcessorFactory');
 const { 
   validateScreenerNotification,
   validateChatSummary,
-  validateGmailInteraction
+  validateGmailInteraction,
+  validateAppraisalRequest
 } = require('./validators');
 const { ValidationError, ProcessingError } = require('../../utils/errors');
 
@@ -40,7 +41,8 @@ class MessageHandler {
       const validators = {
         screenerNotification: validateScreenerNotification,
         chatSummary: validateChatSummary,
-        gmailInteraction: validateGmailInteraction
+        gmailInteraction: validateGmailInteraction,
+        appraisalRequest: validateAppraisalRequest
       };
 
       const validator = validators[data.crmProcess];

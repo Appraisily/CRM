@@ -14,58 +14,55 @@ class DatabaseService {
   async initialize() {
     try {
       this.logger.info('Initializing database connection');
-      
+
       // Get database connection details from environment
       const instanceUnixSocket = process.env.DB_SOCKET_PATH || '/cloudsql';
       const instanceConnectionName = process.env.INSTANCE_CONNECTION_NAME;
       
-      if (!instanceConnectionName) {
-        throw new Error('INSTANCE_CONNECTION_NAME environment variable is required');
+      // Configure connection pool with more resilient settings
+      const config = {
+        user: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME || 'appraisily_activity_db',
+        max: 10, // Reduce max connections
+        idleTimeoutMillis: 10000, // Reduce idle timeout to 10 seconds
+        connectionTimeoutMillis: 5000, // Increase connection timeout to 5 seconds
+        maxUses: 7500, // Recycle connections after 7500 queries
+      };
+
+      // Add Unix socket configuration if running in Cloud Run
+      if (instanceConnectionName) {
+        config.host = `${instanceUnixSocket}/${instanceConnectionName}`;
       }
 
-      // Get DB password from Secret Manager
-      this.logger.info('Retrieving database password from Secret Manager');
-      const name = `projects/${PROJECT_ID}/secrets/DB_PASSWORD/versions/latest`;
-      const [version] = await this.secretClient.accessSecretVersion({ name });
-      const dbPassword = version.payload.data.toString('utf8');
-
       // Configure connection pool
-      this.pool = new Pool({
-        user: 'postgres',
-        password: dbPassword,
-        database: 'appraisily_activity_db',
-        host: `${instanceUnixSocket}/${instanceConnectionName}`,
-        port: 5432,
-        max: 20, // Maximum number of clients in the pool
-        idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-        connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
+      this.pool = new Pool(config);
+
+      // Add error handler to the pool
+      this.pool.on('error', (err, client) => {
+        this.logger.error('Unexpected error on idle client', err);
+      });
+
+      // Add connection handler
+      this.pool.on('connect', (client) => {
+        this.logger.info('New client connected to the pool');
       });
 
       // Test the connection
-      await this.pool.query('SELECT NOW()', async (err, res) => {
-        if (err) {
-          this.logger.error('Error testing database connection', err);
-        } else {
-          this.logger.success('Database connection test successful');
-          
-          // Check for existing tables
-          try {
-            const tableQuery = `
-              SELECT table_name 
-              FROM information_schema.tables 
-              WHERE table_schema = 'public'
-              ORDER BY table_name;
-            `;
-            const { rows } = await this.pool.query(tableQuery);
-            
-            this.logger.info('Database tables found:', {
-              tableCount: rows.length,
-              tables: rows.map(row => row.table_name)
-            });
-          } catch (error) {
-            this.logger.error('Error checking database tables', error);
-          }
-        }
+      const testResult = await this.pool.query('SELECT NOW()');
+      this.logger.success('Database connection test successful');
+
+      // Check for existing tables
+      const { rows } = await this.pool.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public'
+        ORDER BY table_name;
+      `);
+      
+      this.logger.info('Database tables found:', {
+        tableCount: rows.length,
+        tables: rows.map(row => row.table_name)
       });
 
       this.logger.success('Database connection pool initialized');
@@ -79,13 +76,29 @@ class DatabaseService {
     if (!this.pool) {
       throw new Error('Database pool not initialized');
     }
-    return this.pool.query(text, params);
+
+    const start = Date.now();
+    try {
+      const result = await this.pool.query(text, params);
+      const duration = Date.now() - start;
+      this.logger.info('Executed query', { 
+        text, 
+        duration,
+        rowCount: result.rowCount 
+      });
+      return result;
+    } catch (error) {
+      this.logger.error('Query error', { text, error: error.message });
+      throw error;
+    }
   }
 
   async disconnect() {
     if (this.pool) {
       try {
         this.logger.info('Disconnecting from database');
+        // Wait for all queries to finish
+        await Promise.all(this.pool.waitingCount);
         await this.pool.end();
         this.logger.success('Database disconnected successfully');
       } catch (error) {

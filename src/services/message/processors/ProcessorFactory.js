@@ -1,6 +1,7 @@
 const ScreenerProcessor = require('./ScreenerProcessor');
 const ChatSummaryProcessor = require('./ChatSummaryProcessor');
 const GmailProcessor = require('./GmailProcessor');
+const AppraisalProcessor = require('./AppraisalProcessor');
 const { ValidationError } = require('../../../utils/errors');
 
 class ProcessorFactory {
@@ -8,7 +9,8 @@ class ProcessorFactory {
     this.processors = {
       screenerNotification: new ScreenerProcessor(),
       chatSummary: new ChatSummaryProcessor(),
-      gmailInteraction: new GmailProcessor()
+      gmailInteraction: new GmailProcessor(),
+      appraisalRequest: new AppraisalProcessor()
     };
   }
 
