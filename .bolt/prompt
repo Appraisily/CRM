@@ -1,1 +1,3 @@
 civil-forge-403609 -> this is the project ID in cloud run
+
+we DONOT use supabase, we use postgreSQL in Cloud run

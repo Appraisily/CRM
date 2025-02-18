@@ -1,5 +1,4 @@
 const connection = require('./connection');
-const SchemaManager = require('./schema');
 const QueryManager = require('./query');
 const Logger = require('../../utils/logger');
 
@@ -7,7 +6,6 @@ class DatabaseService {
   constructor() {
     this.logger = new Logger('Database Service');
     this.connection = connection;
-    this.schemaManager = null;
     this.queryManager = null;
   }
 
@@ -21,10 +19,7 @@ class DatabaseService {
       // Initialize managers
       this.schemaManager = new SchemaManager(pool);
       this.queryManager = new QueryManager(pool);
-      
-      // Check and apply schema
-      await this.schemaManager.checkAndApplySchema();
-      
+
       this.logger.success('Database service initialized successfully');
     } catch (error) {
       this.logger.error('Failed to initialize database service', error);
