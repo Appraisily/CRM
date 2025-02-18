@@ -20,6 +20,12 @@ class DatabaseService {
         socketPath: process.env.DB_SOCKET_PATH || '/cloudsql',
         instanceName: process.env.INSTANCE_CONNECTION_NAME || 'Not provided'
       });
+      this.logger.info('Database configuration:', {
+        user: process.env.DB_USER || 'postgres',
+        database: process.env.DB_NAME || 'appraisily_activity_db',
+        socketPath: process.env.DB_SOCKET_PATH || '/cloudsql',
+        instanceName: process.env.INSTANCE_CONNECTION_NAME || 'Not provided'
+      });
       
       // Get database password from Secret Manager
       this.logger.info('Retrieving database password from Secret Manager');
@@ -100,9 +106,10 @@ class DatabaseService {
       // Test the connection
       this.logger.info('Testing database connection...');
       await this.pool.query('SELECT NOW()');
-      this.logger.success('Database connection test successful');
+      this.logger.success('✓ Database connection test successful');
 
-      // Check for existing tables
+      this.logger.info('Checking database schema...');
+      this.logger.info('Checking database schema...');
       const { rows } = await this.pool.query(`
         SELECT table_name 
         FROM information_schema.tables 
@@ -114,6 +121,92 @@ class DatabaseService {
         tableCount: rows.length,
         tables: rows.map(row => row.table_name)
       });
+
+      // Check for specific required tables
+      const requiredTables = [
+        'users',
+        'user_activities',
+        'chat_sessions',
+        'purchases',
+        'appraisals',
+        'email_interactions',
+        'bulk_appraisals',
+        'bulk_appraisal_items'
+      ];
+
+      const missingTables = requiredTables.filter(table => 
+        !rows.find(row => row.table_name === table)
+      );
+
+      if (missingTables.length > 0) {
+        this.logger.info('Missing required tables, applying schema...', {
+          missing: missingTables
+        });
+
+        // Read and apply schema
+        const schemaPath = require.resolve('../../migrations/init.sql');
+        const fs = require('fs');
+        const schema = fs.readFileSync(schemaPath, 'utf8');
+
+        try {
+          await this.pool.query(schema);
+          this.logger.success('✓ Schema applied successfully');
+
+          // Verify tables were created
+          const { rows: updatedRows } = await this.pool.query(`
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public'
+            ORDER BY table_name;
+          `);
+
+          const stillMissing = requiredTables.filter(table => 
+            !updatedRows.find(row => row.table_name === table)
+          );
+
+          if (stillMissing.length > 0) {
+            throw new Error(`Failed to create tables: ${stillMissing.join(', ')}`);
+          }
+
+          this.logger.success('✓ All required tables created successfully');
+        } catch (schemaError) {
+          this.logger.error('Failed to apply schema:', {
+            error: schemaError.message,
+            code: schemaError.code,
+            detail: schemaError.detail,
+            hint: schemaError.hint,
+            position: schemaError.position
+          });
+          throw schemaError;
+        }
+      } else {
+        this.logger.success('✓ All required tables present');
+      }
+
+      // Check for specific required tables
+      const requiredTables = [
+        'users',
+        'user_activities',
+        'chat_sessions',
+        'purchases',
+        'appraisals',
+        'email_interactions',
+        'bulk_appraisals',
+        'bulk_appraisal_items'
+      ];
+
+      const missingTables = requiredTables.filter(table => 
+        !rows.find(row => row.table_name === table)
+      );
+
+      if (missingTables.length > 0) {
+        this.logger.error('Missing required tables:', {
+          missing: missingTables,
+          available: rows.map(row => row.table_name)
+        });
+      } else {
+        this.logger.success('All required tables present');
+      }
 
       this.logger.success('Database connection pool initialized');
     } catch (error) {
@@ -132,7 +225,8 @@ class DatabaseService {
     try {
       this.logger.info('Executing query:', {
         text,
-        paramCount: params ? params.length : 0
+        paramCount: params ? params.length : 0,
+        params: params || []
       });
       const result = await this.pool.query(text, params);
       const duration = Date.now() - start;

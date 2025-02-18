@@ -12,7 +12,10 @@ class BulkAppraisalEmailProcessor {
     try {
       this.logger.info('Processing bulk appraisal email update', {
         sessionId: data.metadata.sessionId,
-        timestamp: data.metadata.timestamp
+        timestamp: data.metadata.timestamp,
+        email: data.customer.email,
+        origin: data.metadata.origin,
+        environment: data.metadata.environment
       });
 
       let result = {
@@ -27,6 +30,7 @@ class BulkAppraisalEmailProcessor {
 
       // Create or get user
       try {
+        this.logger.info('Attempting database operations...');
         const userResult = await databaseService.query(
           `INSERT INTO users (email) 
            VALUES ($1)
@@ -37,9 +41,11 @@ class BulkAppraisalEmailProcessor {
         );
         
         const userId = userResult.rows[0].id;
+        this.logger.info('User record created/updated', { userId });
         result.userId = userId;
 
         // Create initial bulk appraisal record
+        this.logger.info('Creating bulk appraisal record...');
         await databaseService.query(
           `INSERT INTO bulk_appraisals 
            (user_id, session_id, appraisal_type, status, total_price, final_price) 
@@ -53,8 +59,10 @@ class BulkAppraisalEmailProcessor {
             0  // Initial final price, will be updated during finalization
           ]
         );
+        this.logger.info('Bulk appraisal record created');
 
         // Record activity
+        this.logger.info('Recording user activity...');
         await databaseService.query(
           `INSERT INTO user_activities 
            (user_id, activity_type, status, metadata) 
@@ -72,15 +80,24 @@ class BulkAppraisalEmailProcessor {
             }
           ]
         );
+        this.logger.info('User activity recorded');
 
         result.dbSuccess = true;
         this.logger.success('Database operations completed successfully');
       } catch (dbError) {
-        this.logger.error('Database operations failed:', dbError);
+        this.logger.error('Database operations failed:', {
+          error: dbError.message,
+          code: dbError.code,
+          detail: dbError.detail,
+          hint: dbError.hint,
+          position: dbError.position,
+          where: dbError.where
+        });
       }
 
       // Log the email submission to the Bulk Appraisals sheet independently
       try {
+        this.logger.info('Logging to sheets...');
         await sheetsService.logBulkAppraisalEmail(
           data.metadata.sessionId,
           data.customer.email,
@@ -89,11 +106,15 @@ class BulkAppraisalEmailProcessor {
         result.sheetSuccess = true;
         this.logger.success('Sheet logging completed successfully');
       } catch (sheetError) {
-        this.logger.error('Sheet logging failed:', sheetError);
+        this.logger.error('Sheet logging failed:', {
+          error: sheetError.message,
+          stack: sheetError.stack
+        });
       }
 
       // Send recovery email independently
       try {
+        this.logger.info('Sending recovery email...');
         await emailService.sendBulkAppraisalRecovery(
           data.customer.email,
           data.metadata.sessionId
@@ -101,7 +122,12 @@ class BulkAppraisalEmailProcessor {
         result.emailSuccess = true;
         this.logger.success('Recovery email sent successfully');
       } catch (emailError) {
-        this.logger.error('Recovery email sending failed:', emailError);
+        this.logger.error('Recovery email sending failed:', {
+          error: emailError.message,
+          response: emailError.response?.body,
+          code: emailError.code,
+          statusCode: emailError.statusCode
+        });
       }
 
       // Overall success if either database or sheet operation succeeded
