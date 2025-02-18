@@ -50,8 +50,13 @@ class SchemaManager {
   async applySchema(missingTables) {
     this.logger.info('Applying schema for missing tables:', { missing: missingTables });
     
+    const fs = require('fs');
+    const path = require('path');
+
     try {
-      await this.pool.query(require('./sql/schema.sql'));
+      const schemaPath = path.join(__dirname, 'sql', 'schema.sql');
+      const schema = fs.readFileSync(schemaPath, 'utf8');
+      await this.pool.query(schema);
       this.logger.success('Schema applied successfully');
 
       // Verify tables were created
