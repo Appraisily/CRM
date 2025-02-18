@@ -12,6 +12,6 @@ module.exports = {
   validateGmailInteraction,
   validateAppraisalRequest,
   validateStripePayment,
-  validateBulkAppraisalEmail,
+  validateBulkAppraisalEmailUpdate,
   validateBulkAppraisalFinalized
 };

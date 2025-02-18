@@ -15,7 +15,7 @@ class ProcessorFactory {
       gmailInteraction: new GmailProcessor(),
       appraisalRequest: new AppraisalProcessor(),
       stripePayment: new StripePaymentProcessor(),
-      bulkAppraisalEmail: new BulkAppraisalEmailProcessor(),
+      bulkAppraisalEmailUpdate: new BulkAppraisalEmailProcessor(),
       bulkAppraisalFinalized: new BulkAppraisalFinalizationProcessor()
     };
   }
