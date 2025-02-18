@@ -88,3 +88,5 @@ class BaseSheetService {
     }
   }
 }
+
+module.exports = BaseSheetService;
