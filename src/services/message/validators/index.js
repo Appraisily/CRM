@@ -3,7 +3,7 @@ const validateChatSummary = require('./chatSummary');
 const validateGmailInteraction = require('./gmailInteraction');
 const validateAppraisalRequest = require('./appraisalRequest');
 const validateStripePayment = require('./stripePayment');
-const validateBulkAppraisalEmail = require('./bulkAppraisalEmailUpdate');
+const validateBulkAppraisalEmailUpdate = require('./bulkAppraisalEmailUpdate');
 const validateBulkAppraisalFinalized = require('./bulkAppraisalFinalized');
 
 module.exports = {
