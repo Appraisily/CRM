@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Your Bulk Appraisal Submission</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: #f9fafb;
+      color: #1f2937;
+      line-height: 1.6;
+      margin: 0;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      padding: 32px;
+      border-radius: 16px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    
+    .logo {
+      width: 40px;
+      height: 40px;
+      vertical-align: middle;
+      margin-right: 10px;
+    }
+    
+    .company-name {
+      display: inline-block;
+      vertical-align: middle;
+      font-size: 24px;
+      font-weight: bold;
+      color: #1f2937;
+    }
+    
+    .content {
+      color: #4b5563;
+      font-size: 16px;
+      padding: 0 8px;
+    }
+    
+    .heading {
+      font-size: 24px;
+      font-weight: 600;
+      color: #1f2937;
+      margin-bottom: 24px;
+      text-align: center;
+    }
+
+    .session-info {
+      margin: 32px 0;
+      padding: 24px;
+      background-color: #f0f9ff;
+      border-radius: 12px;
+      border-left: 4px solid #3b82f6;
+    }
+
+    .session-id {
+      font-family: monospace;
+      background-color: #e5e7eb;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    
+    .footer {
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid #e5e7eb;
+      font-size: 14px;
+      color: #4b5563;
+      text-align: center;
+    }
+    
+    .footer a {
+      color: #007bff;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    
+    .recovery-button {
+      display: inline-block;
+      background-color: #007bff;
+      color: #ffffff !important;
+      padding: 16px 32px;
+      margin: 24px 0;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      text-align: center;
+      transition: background-color 0.2s;
+    }
+    
+    .recovery-button:hover {
+      background-color: #0056b3;
+    }
+    
+    @media only screen and (max-width: 600px) {
+      body {
+        padding: 16px;
+      }
+      
+      .container {
+        padding: 24px;
+      }
+      
+      .logo {
+        width: 35px;
+        height: 35px;
+      }
+      
+      .company-name {
+        font-size: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <table width="100%" border="0" cellspacing="0" cellpadding="0">
+      <tr>
+        <td align="center" style="padding-bottom: 32px;">
+          <h1 class="heading">Your Bulk Appraisal Submission</h1>
+          <table border="0" cellspacing="0" cellpadding="0">
+            <tr>
+              <td>
+                <img src="http://cdn.mcauto-images-production.sendgrid.net/304ac75ef1d5c007/8aeb2689-2b5b-402d-a6f3-6521621e123a/300x300.png" alt="Appraisily Logo" class="logo" width="40" height="40" style="vertical-align: middle;">
+              </td>
+              <td style="padding-left: 10px;">
+                <span class="company-name" style="vertical-align: middle;">Appraisily</span>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <div class="content">
+      <p>Thank you for starting your bulk appraisal submission with Appraisily! We've saved your progress and you can continue your submission at any time. If you have already completed your submission, you can safely ignore this message.</p>
+
+      <div class="session-info">
+        <p><strong>Your Session ID:</strong><br>
+        <span class="session-id">{{session_id}}</span></p>
+        <p>If you haven't completed your submission yet, please save this ID to recover your progress later.</p>
+      </div>
+
+      <p>To continue an incomplete submission, simply click the button below:</p>
+
+      <div style="text-align: center;">
+        <a href="https://appraisily.com/bulk-appraisal/recover/{{session_id}}" class="recovery-button">
+          Continue Submission
+        </a>
+      </div>
+
+      <p>If you have any questions or need assistance, our support team is available 24/7 to help you.</p>
+    </div>
+
+    <div class="footer">
+      <p>Visit our website at <a href="https://www.appraisily.com">www.appraisily.com</a></p>
+      <p>&copy; {{year}} Appraisily. All rights reserved.</p>
+      <p>This is an automated message sent when a bulk appraisal submission is started. Please do not reply to this email.</p>
+    </div>
+  </div>
+</body>
+</html>

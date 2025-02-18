@@ -20,6 +20,7 @@ async function getApiKeys() {
   }
 }
 
+module.exports = { validateApiKey };
 async function validateApiKey(req, res, next) {
   try {
     const apiKey = req.headers['x-api-key'];

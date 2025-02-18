@@ -1,7 +1,7 @@
 const express = require('express');
 const { rateLimit } = require('express-rate-limit');
 const databaseService = require('../services/database');
-const { validateApiKey } = require('../middleware/auth');
+const auth = require('../middleware/auth');
 const Logger = require('../utils/logger');
 
 const router = express.Router();
@@ -21,7 +21,7 @@ const limiter = rateLimit({
 
 // Apply rate limiting and API key validation to all routes
 router.use(limiter);
-router.use(validateApiKey);
+router.use(auth.validateApiKey);
 
 // Get customer profile
 router.get('/:email', async (req, res) => {

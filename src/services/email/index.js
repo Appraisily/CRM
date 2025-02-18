@@ -15,7 +15,13 @@ class EmailService {
   initialize(apiKey, fromEmail, freeReportTemplateId, personalOfferTemplateId, personalEmail, directApiKey) {
     try {
       // Initialize SendGrid service
-      sendGridService.initialize(apiKey, fromEmail, freeReportTemplateId, personalOfferTemplateId);
+      sendGridService.initialize(
+        apiKey,
+        fromEmail,
+        freeReportTemplateId,
+        personalOfferTemplateId,
+        process.env.SEND_GRID_TEMPLATE_BULK_RECOVERY
+      );
 
       // Initialize Michelle service
       michelleService.initialize(directApiKey, fromEmail);
@@ -24,6 +30,14 @@ class EmailService {
     } catch (error) {
       throw new InitializationError(`Failed to initialize email service: ${error.message}`);
     }
+  }
+
+  async sendBulkAppraisalRecovery(toEmail, sessionId) {
+    if (!this.initialized) {
+      throw new InitializationError('Email service not initialized');
+    }
+    
+    return sendGridService.sendBulkAppraisalRecovery(toEmail, sessionId);
   }
 
   async sendPersonalOffer(toEmail, subject, analysisData, scheduledTime = null) {

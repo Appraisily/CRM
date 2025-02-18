@@ -10,10 +10,11 @@ class SendGridService {
     this.apiKey = null;
     this.freeReportTemplateId = null;
     this.personalOfferTemplateId = null;
+    this.bulkAppraisalRecoveryTemplateId = null;
     this.logger = new Logger('SendGrid Service');
   }
 
-  initialize(apiKey, fromEmail, freeReportTemplateId, personalOfferTemplateId) {
+  initialize(apiKey, fromEmail, freeReportTemplateId, personalOfferTemplateId, bulkAppraisalRecoveryTemplateId) {
     if (!apiKey || !fromEmail) {
       throw new InitializationError('API key and from email are required');
     }
@@ -24,9 +25,34 @@ class SendGridService {
     this.fromEmail = fromEmail;
     this.freeReportTemplateId = freeReportTemplateId;
     this.personalOfferTemplateId = personalOfferTemplateId;
+    this.bulkAppraisalRecoveryTemplateId = bulkAppraisalRecoveryTemplateId;
     this.initialized = true;
   }
 
+  async sendBulkAppraisalRecovery(toEmail, sessionId) {
+    if (!this.initialized) {
+      throw new InitializationError('SendGrid service not initialized');
+    }
+
+    try {
+      const msg = {
+        to: toEmail,
+        from: this.fromEmail,
+        templateId: this.bulkAppraisalRecoveryTemplateId,
+        dynamicTemplateData: {
+          subject: 'Your Bulk Appraisal Submission Details',
+          session_id: sessionId,
+          year: new Date().getFullYear()
+        }
+      };
+
+      await sgMail.send(msg);
+      return true;
+    } catch (error) {
+      this.logger.error('SendGrid error sending bulk appraisal recovery email', error);
+      throw error;
+    }
+  }
   async sendPersonalOffer(toEmail, subject, content, scheduledTime = null) {
     if (!this.initialized) {
       throw new InitializationError('SendGrid service not initialized');
