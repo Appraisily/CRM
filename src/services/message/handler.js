@@ -51,12 +51,28 @@ class MessageHandler {
         bulkAppraisalFinalized: validateBulkAppraisalFinalized
       };
 
+      // Debug logging for validator lookup
+      this.logger.info('Validator lookup:', {
+        requestedProcess: data.crmProcess,
+        availableValidators: Object.keys(validators),
+        validatorFound: !!validators[data.crmProcess]
+      });
+
       const validator = validators[data.crmProcess];
       if (!validator) {
         throw new ValidationError(`Unknown crmProcess: ${data.crmProcess}`);
       }
 
+      // Debug logging for validation
+      this.logger.info('Running validation for process:', data.crmProcess);
+
       validation = validator(data);
+
+      // Debug logging for validation result
+      this.logger.info('Validation result:', {
+        isValid: validation.isValid,
+        errors: validation.errors || []
+      });
       if (!validation.isValid) {
         throw new ValidationError(`Invalid message format: ${validation.errors.join(', ')}`);
       }

@@ -69,6 +69,25 @@ The service provides a secure REST API for accessing customer data:
 
 The service processes the following PubSub message types:
 
+1. **Bulk Appraisal Email Update** (`bulkAppraisalEmailUpdate`)
+   - Triggered when a user starts a bulk appraisal submission
+   - Creates initial database records and sends recovery email
+   - Fields:
+     ```json
+     {
+       "crmProcess": "bulkAppraisalEmailUpdate",
+       "customer": {
+         "email": "string"
+       },
+       "metadata": {
+         "sessionId": "string",
+         "origin": "string",
+         "environment": "string",
+         "timestamp": "number"
+       }
+     }
+     ```
+
 1. **Screener Notification** (`screenerNotification`)
    - Triggered when a user submits an image for initial screening
    - Sends free analysis report and schedules personal offer
@@ -216,6 +235,30 @@ The service processes the following PubSub message types:
      }
      ```
 
+5. **Bulk Appraisal Finalized** (`bulkAppraisalFinalized`)
+   - Handles completed bulk appraisal submissions
+   - Updates status and pricing information
+   - Fields:
+     ```json
+     {
+       "crmProcess": "bulkAppraisalFinalized",
+       "customer": {
+         "email": "string",
+         "notes": "string"
+       },
+       "appraisal": {
+         "type": "string",
+         "itemCount": "number",
+         "sessionId": "string"
+       },
+       "metadata": {
+         "origin": "string",
+         "environment": "string",
+         "timestamp": "number"
+       }
+     }
+     ```
+
 ### Pull Subscription Model
 
 The service implements a robust pull subscription pattern:
@@ -228,6 +271,8 @@ The service implements a robust pull subscription pattern:
 ## Core Features
 
 ### Message Processing
+- Bulk appraisal submission handling
+- Recovery email generation for incomplete submissions
 - Pull-based PubSub message handling
 - Screener notification processing
 - Analysis completion notifications
@@ -237,6 +282,7 @@ The service implements a robust pull subscription pattern:
 ### Email Communications
 - Professional HTML email templates
 - Automated email campaign management
+- Bulk appraisal recovery notifications
 - Personalized offer generation using Michelle API
 - Analysis report delivery
 - Smart retry logic for failed communications
@@ -260,6 +306,7 @@ The service implements a robust pull subscription pattern:
 ### Data Management
 - Customer interaction tracking in Google Sheets
 - Email delivery status monitoring
+- Bulk appraisal progress tracking
 - Communication history logging
 - Activity tracking in PostgreSQL database
 - API access monitoring and rate limiting
@@ -355,6 +402,7 @@ P: Offer Content
 ## Required Configuration
 
 ### Environment Variables
+- `SENDGRID_BULK_APPRAISAL_RESUBMISSION`: SendGrid template ID for bulk appraisal recovery emails
 - `PORT`: Server port (default: 8080)
 - `PUBSUB_SUBSCRIPTION_NAME`: Name of the PubSub subscription to pull messages from
 - `DB_USER`: Database user (default: postgres)
