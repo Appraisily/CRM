@@ -15,13 +15,7 @@ class EmailService {
   initialize(apiKey, fromEmail, freeReportTemplateId, personalOfferTemplateId, personalEmail, directApiKey) {
     try {
       // Initialize SendGrid service
-      sendGridService.initialize(
-        apiKey,
-        fromEmail,
-        freeReportTemplateId,
-        personalOfferTemplateId,
-        process.env.SEND_GRID_TEMPLATE_BULK_RECOVERY
-      );
+      sendGridService.initialize(apiKey, fromEmail, freeReportTemplateId, personalOfferTemplateId);
 
       // Initialize Michelle service
       michelleService.initialize(directApiKey, fromEmail);

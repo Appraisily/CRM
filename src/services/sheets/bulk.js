@@ -3,7 +3,7 @@ const BaseSheetService = require('./base');
 class BulkAppraisalSheetService extends BaseSheetService {
   constructor() {
     super();
-    this.bulkAppraisalsSheet = 'Bulk Appraisals';
+    this.bulkAppraisalsSheet = "'Bulk Appraisals'";
   }
 
   async logBulkAppraisalEmail(sessionId, email, timestamp) {

@@ -25,7 +25,7 @@ class SendGridService {
       templates: {
         freeReport: !!freeReportTemplateId,
         personalOffer: !!personalOfferTemplateId,
-        bulkAppraisalRecovery: !!bulkAppraisalRecoveryTemplateId
+        bulkAppraisalRecovery: !!process.env.SENDGRID_BULK_APPRAISAL_RESUBMISSION
       }
     });
 
@@ -34,7 +34,7 @@ class SendGridService {
     this.fromEmail = fromEmail;
     this.freeReportTemplateId = freeReportTemplateId;
     this.personalOfferTemplateId = personalOfferTemplateId;
-    this.bulkAppraisalRecoveryTemplateId = bulkAppraisalRecoveryTemplateId;
+    this.bulkAppraisalRecoveryTemplateId = process.env.SENDGRID_BULK_APPRAISAL_RESUBMISSION;
 
     if (!this.bulkAppraisalRecoveryTemplateId) {
       this.logger.error('Missing bulk appraisal recovery template ID');
@@ -50,7 +50,7 @@ class SendGridService {
     }
 
     if (!this.bulkAppraisalRecoveryTemplateId) {
-      throw new Error('Bulk appraisal recovery template ID not configured');
+      throw new Error('SENDGRID_BULK_APPRAISAL_RESUBMISSION environment variable not set');
     }
 
     this.logger.info('Sending bulk appraisal recovery email', {
