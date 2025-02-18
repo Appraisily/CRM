@@ -19,20 +19,45 @@ class SendGridService {
       throw new InitializationError('API key and from email are required');
     }
     
-    this.logger.info('Initializing SendGrid with provided API key');
+    this.logger.info('Initializing SendGrid service', {
+      hasApiKey: !!apiKey,
+      fromEmail,
+      templates: {
+        freeReport: !!freeReportTemplateId,
+        personalOffer: !!personalOfferTemplateId,
+        bulkAppraisalRecovery: !!bulkAppraisalRecoveryTemplateId
+      }
+    });
+
     this.apiKey = apiKey;
     sgMail.setApiKey(apiKey);
     this.fromEmail = fromEmail;
     this.freeReportTemplateId = freeReportTemplateId;
     this.personalOfferTemplateId = personalOfferTemplateId;
     this.bulkAppraisalRecoveryTemplateId = bulkAppraisalRecoveryTemplateId;
+
+    if (!this.bulkAppraisalRecoveryTemplateId) {
+      this.logger.error('Missing bulk appraisal recovery template ID');
+    }
+
     this.initialized = true;
+    this.logger.success('SendGrid service initialized');
   }
 
   async sendBulkAppraisalRecovery(toEmail, sessionId) {
     if (!this.initialized) {
       throw new InitializationError('SendGrid service not initialized');
     }
+
+    if (!this.bulkAppraisalRecoveryTemplateId) {
+      throw new Error('Bulk appraisal recovery template ID not configured');
+    }
+
+    this.logger.info('Sending bulk appraisal recovery email', {
+      to: toEmail,
+      sessionId,
+      templateId: this.bulkAppraisalRecoveryTemplateId
+    });
 
     try {
       const msg = {
@@ -49,7 +74,12 @@ class SendGridService {
       await sgMail.send(msg);
       return true;
     } catch (error) {
-      this.logger.error('SendGrid error sending bulk appraisal recovery email', error);
+      this.logger.error('SendGrid error sending bulk appraisal recovery email', {
+        error: error.message,
+        response: error.response?.body,
+        code: error.code,
+        statusCode: error.statusCode
+      });
       throw error;
     }
   }

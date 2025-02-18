@@ -14,6 +14,12 @@ class DatabaseService {
   async initialize() {
     try {
       this.logger.info('Initializing database connection');
+      this.logger.info('Database configuration:', {
+        user: process.env.DB_USER || 'postgres',
+        database: process.env.DB_NAME || 'appraisily_activity_db',
+        socketPath: process.env.DB_SOCKET_PATH || '/cloudsql',
+        instanceName: process.env.INSTANCE_CONNECTION_NAME || 'Not provided'
+      });
       
       // Get database password from Secret Manager
       this.logger.info('Retrieving database password from Secret Manager');
@@ -25,6 +31,12 @@ class DatabaseService {
       const instanceUnixSocket = process.env.DB_SOCKET_PATH || '/cloudsql';
       const instanceConnectionName = process.env.INSTANCE_CONNECTION_NAME;
       
+      this.logger.info('Connection details:', {
+        instanceUnixSocket,
+        instanceConnectionName,
+        hasPassword: !!dbPassword
+      });
+
       if (!instanceConnectionName) {
         throw new Error('INSTANCE_CONNECTION_NAME environment variable is required');
       }
@@ -54,21 +66,39 @@ class DatabaseService {
       // Configure connection pool
       this.pool = new Pool(config);
       this.logger.info('Database pool configured');
+      this.logger.info('Pool configuration:', {
+        max: config.max,
+        idleTimeoutMillis: config.idleTimeoutMillis,
+        connectionTimeoutMillis: config.connectionTimeoutMillis
+      });
 
       // Add error handler to the pool
       this.pool.on('error', (err, client) => {
-        this.logger.error('Unexpected error on idle client', err);
+        this.logger.error('Pool error:', {
+          message: err.message,
+          code: err.code,
+          detail: err.detail,
+          hint: err.hint,
+          position: err.position
+        });
       });
 
       // Add connection handler
       this.pool.on('connect', (client) => {
         this.logger.info('New client connected to the pool');
         client.on('error', err => {
-          this.logger.error('Client error', err);
+          this.logger.error('Client error:', {
+            message: err.message,
+            code: err.code,
+            detail: err.detail,
+            hint: err.hint,
+            position: err.position
+          });
         });
       });
 
       // Test the connection
+      this.logger.info('Testing database connection...');
       await this.pool.query('SELECT NOW()');
       this.logger.success('Database connection test successful');
 
@@ -94,11 +124,16 @@ class DatabaseService {
 
   async query(text, params) {
     if (!this.pool) {
+      this.logger.error('Query attempted but pool not initialized');
       throw new Error('Database pool not initialized');
     }
 
     const start = Date.now();
     try {
+      this.logger.info('Executing query:', {
+        text,
+        paramCount: params ? params.length : 0
+      });
       const result = await this.pool.query(text, params);
       const duration = Date.now() - start;
       this.logger.info('Executed query', { 
@@ -108,7 +143,16 @@ class DatabaseService {
       });
       return result;
     } catch (error) {
-      this.logger.error('Query error', { text, error: error.message });
+      this.logger.error('Query error:', {
+        text,
+        params,
+        errorMessage: error.message,
+        errorCode: error.code,
+        errorDetail: error.detail,
+        errorHint: error.hint,
+        errorPosition: error.position,
+        duration: Date.now() - start
+      });
       throw error;
     }
   }

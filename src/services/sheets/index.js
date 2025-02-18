@@ -13,6 +13,11 @@ class SheetsService {
     bulkService.initialize(keyFilePath, sheetsId);
   }
 
+  // Bulk appraisal methods
+  logBulkAppraisalEmail(sessionId, email, timestamp) {
+    return bulkService.logBulkAppraisalEmail(sessionId, email, timestamp);
+  }
+
   // Upload methods
   logUpload(sessionId, timestamp, imageUrl) {
     return uploadService.logUpload(sessionId, timestamp, imageUrl);
@@ -39,11 +44,6 @@ class SheetsService {
 
   updateDetailedAnalysis(sessionId, detailedAnalysis) {
     return analysisService.updateDetailedAnalysis(sessionId, detailedAnalysis);
-  }
-
-  // Bulk appraisal methods
-  logBulkAppraisalEmail(sessionId, email, timestamp) {
-    return bulkService.logBulkAppraisalEmail(sessionId, email, timestamp);
   }
 }
 
