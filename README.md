@@ -67,9 +67,9 @@ The service provides a secure REST API for accessing customer data:
 
 ### Message Types
 
-The service processes the following PubSub message types:
+The service processes the following PubSub message types (✓ = fully implemented, ⚠️ = partial implementation, ❌ = not implemented):
 
-1. **Bulk Appraisal Email Update** (`bulkAppraisalEmailUpdate`)
+1. **Bulk Appraisal Email Update** (`bulkAppraisalEmailUpdate`) ✓
    - Triggered when a user starts a bulk appraisal submission
    - Creates initial database records and sends recovery email
    - Fields:
@@ -88,7 +88,7 @@ The service processes the following PubSub message types:
      }
      ```
 
-1. **Screener Notification** (`screenerNotification`)
+2. **Screener Notification** (`screenerNotification`) ✓
    - Triggered when a user submits an image for initial screening
    - Sends free analysis report and schedules personal offer
    - Fields:
@@ -107,7 +107,7 @@ The service processes the following PubSub message types:
      }
      ```
 
-2. **Chat Summary** (`chatSummary`)
+3. **Chat Summary** (`chatSummary`) ✓
    - Records completed chat session details
    - Stores transcript and satisfaction score
    - Fields:
@@ -134,7 +134,7 @@ The service processes the following PubSub message types:
      }
      ```
 
-3. **Gmail Interaction** (`gmailInteraction`)
+4. **Gmail Interaction** (`gmailInteraction`) ✓
    - Processes email interactions from Gmail
    - Records email content and classification
    - Fields:
@@ -165,7 +165,7 @@ The service processes the following PubSub message types:
      }
      ```
 
-4. **Appraisal Request** (`appraisalRequest`)
+5. **Appraisal Request** (`appraisalRequest`) ✓
    - Handles professional appraisal requests
    - Records appraisal details and generates documents
    - Fields:
@@ -204,7 +204,7 @@ The service processes the following PubSub message types:
      }
      ```
 
-5. **Stripe Payment** (`stripePayment`)
+6. **Stripe Payment** (`stripePayment`) ✓
    - Records completed purchases and payment information
    - Updates user purchase history and activity
    - Fields:
@@ -235,9 +235,10 @@ The service processes the following PubSub message types:
      }
      ```
 
-5. **Bulk Appraisal Finalized** (`bulkAppraisalFinalized`)
+7. **Bulk Appraisal Finalized** (`bulkAppraisalFinalized`) ⚠️
    - Handles completed bulk appraisal submissions
    - Updates status and pricing information
+   - Current Implementation: Basic message acknowledgment only
    - Fields:
      ```json
      {
@@ -258,6 +259,51 @@ The service processes the following PubSub message types:
        }
      }
      ```
+
+### Message Processing Implementation Details
+
+1. **Bulk Appraisal Email Update**
+   - Full database integration
+   - Email recovery system
+   - Sheet logging
+   - Activity tracking
+
+2. **Screener Notification**
+   - Analysis processing
+   - Report generation
+   - Email delivery
+   - Sheet logging
+
+3. **Chat Summary**
+   - Session recording
+   - Transcript storage
+   - Satisfaction tracking
+   - Activity logging
+
+4. **Gmail Interaction**
+   - Email classification
+   - Content analysis
+   - Response tracking
+   - Activity logging
+
+5. **Appraisal Request**
+   - Full appraisal workflow
+   - Document generation
+   - Status tracking
+   - Result storage
+
+6. **Stripe Payment**
+   - Payment processing
+   - Purchase recording
+   - Activity tracking
+   - Status updates
+
+7. **Bulk Appraisal Finalized**
+   - Basic message validation
+   - Message acknowledgment
+   - Pending: Database integration
+   - Pending: Status updates
+   - Pending: Activity tracking
 
 ### Pull Subscription Model
 

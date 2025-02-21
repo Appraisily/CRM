@@ -3,6 +3,7 @@ const ChatSummaryProcessor = require('./ChatSummaryProcessor');
 const GmailProcessor = require('./GmailProcessor');
 const AppraisalProcessor = require('./AppraisalProcessor');
 const StripePaymentProcessor = require('./StripePaymentProcessor');
+const BulkAppraisalFinalizationProcessor = require('./BulkAppraisalFinalizationProcessor');
 const BulkAppraisalEmailProcessor = require('./BulkAppraisalEmailProcessor');
 const BulkAppraisalFinalizationProcessor = require('./BulkAppraisalFinalizationProcessor');
 const { ValidationError } = require('../../../utils/errors');
@@ -16,6 +17,7 @@ class ProcessorFactory {
       appraisalRequest: new AppraisalProcessor(),
       stripePayment: new StripePaymentProcessor(),
       bulkAppraisalEmailUpdate: new BulkAppraisalEmailProcessor(),
+      stripePayment: new StripePaymentProcessor(),
       bulkAppraisalFinalized: new BulkAppraisalFinalizationProcessor()
     };
   }

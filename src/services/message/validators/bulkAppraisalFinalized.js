@@ -33,7 +33,7 @@ function validateBulkAppraisalFinalized(data) {
 
   // Validate appraisal data
   if (data.appraisal && typeof data.appraisal === 'object') {
-    const validTypes = ['regular', 'insurance', 'tax'];
+    const validTypes = ['regular', 'insurance', 'IRS'];
     if (!data.appraisal.type) {
       errors.push('Missing required field: appraisal.type');
     } else if (!validTypes.includes(data.appraisal.type)) {
@@ -75,5 +75,3 @@ function validateBulkAppraisalFinalized(data) {
     errors
   };
 }
-
-module.exports = validateBulkAppraisalFinalized;
