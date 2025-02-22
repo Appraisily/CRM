@@ -19,6 +19,7 @@ class PubSubService {
       throw new InitializationError('Project ID, subscription name, and message handler are required');
     }
 
+
     this.messageHandler = messageHandler;
     
     try {
@@ -54,6 +55,16 @@ class PubSubService {
           maxMilliseconds: 100
         }
       };
+
+      // Start listening for messages
+      this.logger.info('Starting message subscription...');
+      this.subscription.on('message', async (message) => {
+        try {
+          await this._handleMessage(message);
+        } catch (error) {
+          this.logger.error('Error handling message', error);
+        }
+      });
 
       this.subscription.on('message', async (message) => {
         try {
