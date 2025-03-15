@@ -6,6 +6,7 @@ const StripePaymentProcessor = require('./StripePaymentProcessor');
 const BulkAppraisalEmailProcessor = require('./BulkAppraisalEmailProcessor');
 const BulkAppraisalFinalizationProcessor = require('./BulkAppraisalFinalizationProcessor');
 const ResetPasswordRequestProcessor = require('./ResetPasswordRequestProcessor');
+const NewRegistrationEmailProcessor = require('./NewRegistrationEmailProcessor');
 const { ValidationError } = require('../../../utils/errors');
 
 class ProcessorFactory {
@@ -18,7 +19,8 @@ class ProcessorFactory {
       stripePayment: new StripePaymentProcessor(),
       bulkAppraisalEmailUpdate: new BulkAppraisalEmailProcessor(), 
       bulkAppraisalFinalized: new BulkAppraisalFinalizationProcessor(),
-      resetPasswordRequest: new ResetPasswordRequestProcessor()
+      resetPasswordRequest: new ResetPasswordRequestProcessor(),
+      newRegistrationEmail: new NewRegistrationEmailProcessor()
     };
   }
 

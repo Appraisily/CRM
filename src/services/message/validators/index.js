@@ -6,6 +6,7 @@ const validateStripePayment = require('./stripePayment');
 const validateBulkAppraisalEmailUpdate = require('./bulkAppraisalEmailUpdate.js');
 const validateBulkAppraisalFinalized = require('./bulkAppraisalFinalized.js');
 const validateResetPasswordRequest = require('./resetPasswordRequest');
+const validateNewRegistrationEmail = require('./newRegistrationEmail');
 
 module.exports = {
   validateScreenerNotification,
@@ -15,5 +16,6 @@ module.exports = {
   validateStripePayment,
   validateBulkAppraisalEmailUpdate,
   validateBulkAppraisalFinalized,
-  validateResetPasswordRequest
+  validateResetPasswordRequest,
+  validateNewRegistrationEmail
 };
