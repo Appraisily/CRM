@@ -1,10 +1,9 @@
 const Logger = require('../../../utils/logger');
-const { SendGridService } = require('../../email');
+const sendGridService = require('../../email/SendGridService');
 
 class ResetPasswordRequestProcessor {
   constructor() {
     this.logger = new Logger('Reset Password Request Processor');
-    this.sendGridService = new SendGridService();
   }
 
   async process(data) {
@@ -13,15 +12,18 @@ class ResetPasswordRequestProcessor {
         email: data.customer.email
       });
 
-      await this.sendGridService.sendDynamicTemplateEmail({
+      const msg = {
         to: data.customer.email,
+        from: sendGridService.fromEmail,
         templateId: process.env.SENDGRID_RESETPASSWORD,
         dynamicTemplateData: {
           token: data.token,
           email: data.customer.email,
           year: new Date().getFullYear()
         }
-      });
+      };
+
+      await sendGridService.send(msg);
 
       this.logger.success('Reset password email sent successfully');
       

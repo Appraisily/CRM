@@ -1,10 +1,9 @@
 const Logger = require('../../../utils/logger');
-const { SendGridService } = require('../../email');
+const sendGridService = require('../../email/SendGridService');
 
 class NewRegistrationEmailProcessor {
   constructor() {
     this.logger = new Logger('New Registration Email Processor');
-    this.sendGridService = new SendGridService();
   }
 
   async process(data) {
@@ -14,15 +13,18 @@ class NewRegistrationEmailProcessor {
         name: data.customer.name || 'Valued Customer'
       });
 
-      await this.sendGridService.sendDynamicTemplateEmail({
+      const msg = {
         to: data.customer.email,
+        from: sendGridService.fromEmail,
         templateId: process.env.SENDGRID_NEWREGISTRATION,
         dynamicTemplateData: {
           name: data.customer.name || 'Valued Customer',
           email: data.customer.email,
           year: new Date().getFullYear()
         }
-      });
+      };
+
+      await sendGridService.send(msg);
 
       this.logger.success('New registration email sent successfully');
       
