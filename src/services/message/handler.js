@@ -8,7 +8,8 @@ const {
   validateStripePayment,
   validateBulkAppraisalEmailUpdate,
   validateBulkAppraisalFinalized,
-  validateResetPasswordRequest
+  validateResetPasswordRequest,
+  validateNewRegistrationEmail
 } = require('./validators');
 const { ValidationError, ProcessingError } = require('../../utils/errors');
 
@@ -50,7 +51,8 @@ class MessageHandler {
         stripePayment: validateStripePayment,
         bulkAppraisalEmailUpdate: validateBulkAppraisalEmailUpdate,
         bulkAppraisalFinalized: validateBulkAppraisalFinalized,
-        resetPasswordRequest: validateResetPasswordRequest
+        resetPasswordRequest: validateResetPasswordRequest,
+        newRegistrationEmail: validateNewRegistrationEmail
       };
 
       // Debug logging for validator lookup
@@ -97,4 +99,4 @@ class MessageHandler {
   }
 }
 
-module.exports = new MessageHandler();
+module.exports = MessageHandler;
