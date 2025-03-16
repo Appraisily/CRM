@@ -38,8 +38,22 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 });
 
 const port = process.env.PORT || 8080;
-app.listen(port, () => {
+
+// Create server and handle errors
+const server = app.listen(port, () => {
   logger.info(`Server running on port ${port}`);
+}).on('error', (error: Error) => {
+  logger.error('Failed to start server:', error);
+  process.exit(1);
+});
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM signal received. Closing HTTP server...');
+  server.close(() => {
+    logger.info('HTTP server closed');
+    process.exit(0);
+  });
 });
 
 export default app; 
