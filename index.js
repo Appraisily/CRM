@@ -2,6 +2,7 @@ const express = require('express');
 const { loadSecrets } = require('./src/config/secrets');
 const corsMiddleware = require('./src/middleware/cors');
 const customerRoutes = require('./src/routes/customers');
+const testHandlersRouter = require('./src/routes/test-handlers');
 const cloudServices = require('./src/services/storage');
 const emailService = require('./src/services/email');
 const sheetsService = require('./src/services/sheets');
@@ -24,6 +25,7 @@ app.use(corsMiddleware);
 
 // API Routes
 app.use('/api/customers', customerRoutes);
+app.use('/api', testHandlersRouter);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
