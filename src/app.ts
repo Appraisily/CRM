@@ -12,9 +12,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
-// API key validation for all routes except health check
+// API key validation for all routes except health check and test handlers
 app.use((req, res, next) => {
-  if (req.path === '/health') {
+  if (req.path === '/health' || req.path === '/api/test-handlers') {
     return next();
   }
   validateApiKey(req, res, next);

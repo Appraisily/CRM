@@ -10,7 +10,8 @@ const processorFactory = new ProcessorFactory();
 const ensureAuthorized: RequestHandler = (req, res, next): void => {
   const apiKey = req.headers['x-api-key'];
   // Only allow access with a specific test API key
-  if (apiKey !== process.env.TEST_HANDLERS_API_KEY) {
+  // For testing purposes, allow "test" as a fallback if env var isn't set
+  if (apiKey !== (process.env.TEST_HANDLERS_API_KEY || "test")) {
     res.status(403).json({ error: 'Unauthorized access to test handlers' });
     return;
   }
