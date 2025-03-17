@@ -1,5 +1,5 @@
 {
-  "name": "appraisals-web-services-backend",
+  "name": "crm-service",
   "version": "1.0.0",
   "description": "Backend service for image analysis using OpenAI and Google Vision",
   "main": "dist/app.js",
