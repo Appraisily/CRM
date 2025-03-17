@@ -2,9 +2,12 @@
   "name": "appraisals-web-services-backend",
   "version": "1.0.0",
   "description": "Backend service for image analysis using OpenAI and Google Vision",
-  "main": "index.js",
+  "main": "dist/app.js",
   "scripts": {
-    "start": "node index.js"
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "dev": "ts-node src/app.ts",
+    "watch": "tsc -w"
   },
   "author": "Your Name",
   "license": "MIT",
@@ -28,6 +31,8 @@
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
-    "@types/node": "^22.13.10"
+    "@types/node": "^22.13.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
   }
 }

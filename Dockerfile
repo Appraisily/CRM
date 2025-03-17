@@ -1,22 +1,32 @@
 # Dockerfile
 
-# Usa una imagen oficial de Node.js
-FROM node:18
+# Use Node.js LTS
+FROM node:18-slim
 
-# Crear y cambiar al directorio de la app
+# Create and set working directory
 WORKDIR /usr/src/app
 
-# Copiar los archivos de dependencia
+# Copy package files
 COPY package*.json ./
+COPY tsconfig.json ./
 
-# Instalar dependencias
-RUN npm install --only=production
+# Install dependencies
+RUN npm install
 
-# Copiar el resto de los archivos de la app
-COPY . .
+# Copy source code
+COPY src/ ./src/
 
-# Exponer el puerto
+# Build TypeScript
+RUN npm run build
+
+# Remove development dependencies
+RUN npm prune --production
+
+# Expose port
 EXPOSE 8080
 
-# Comando para correr la app
+# Set environment variable
+ENV PORT=8080
+
+# Start the application
 CMD [ "npm", "start" ]
