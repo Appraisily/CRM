@@ -88,7 +88,6 @@ class DatabaseConnection {
     if (this.pool) {
       try {
         this.logger.info('Disconnecting from database');
-        await Promise.all(this.pool.waitingCount);
         await this.pool.end();
         this.logger.success('Database disconnected successfully');
       } catch (error) {
