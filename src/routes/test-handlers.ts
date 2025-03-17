@@ -27,7 +27,7 @@ interface TestResult {
 }
 
 // Test handlers endpoint
-const testHandlerRoute: RequestHandler = async (req, res) => {
+const testHandlerRoute: RequestHandler = async (req, res, next) => {
   const process = req.query.process as string | undefined;
   const timestamp = Date.now();
 
@@ -39,12 +39,14 @@ const testHandlerRoute: RequestHandler = async (req, res) => {
     if (process) {
       const message = createTestMessage(process, timestamp);
       if (!message) {
-        return res.status(400).json({ error: `Unknown process type: ${process}` });
+        res.status(400).json({ error: `Unknown process type: ${process}` });
+        return;
       }
 
       const processor = processorFactory.getProcessor(process);
       const result = await processor.process(message as Message);
-      return res.json({ success: true, process, result });
+      res.json({ success: true, process, result });
+      return;
     }
 
     // Test all handlers
@@ -75,10 +77,10 @@ const testHandlerRoute: RequestHandler = async (req, res) => {
       }
     }
 
-    return res.json({ success: true, results });
+    res.json({ success: true, results });
   } catch (error) {
     console.error('[TEST HANDLER] Error:', error instanceof Error ? error.message : 'Unknown error');
-    return res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
   }
 };
 
