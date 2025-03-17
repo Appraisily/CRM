@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { ProcessorFactory } from '../services/message/processors/ProcessorFactory';
+import { Message } from '@google-cloud/pubsub';
 
 const router = express.Router();
 const TEST_EMAIL = 'ratonxi@gmail.com';
@@ -18,8 +19,15 @@ const ensureAuthorized = (req: Request, res: Response, next: NextFunction): void
 
 router.use(ensureAuthorized);
 
+interface TestResult {
+  process: string;
+  success: boolean;
+  result?: any;
+  error?: string;
+}
+
 // Test handlers endpoint
-router.post('/test-handlers', async (req: Request, res: Response) => {
+router.post('/test-handlers', async (req: Request, res: Response): Promise<Response> => {
   const process = req.query.process as string | undefined;
   const timestamp = Date.now();
 
@@ -35,12 +43,12 @@ router.post('/test-handlers', async (req: Request, res: Response) => {
       }
 
       const processor = processorFactory.getProcessor(process);
-      const result = await processor.process(message);
+      const result = await processor.process(message as Message);
       return res.json({ success: true, process, result });
     }
 
     // Test all handlers
-    const results = [];
+    const results: TestResult[] = [];
     const processes = [
       'resetPasswordRequest',
       'newRegistrationEmail',
@@ -56,7 +64,7 @@ router.post('/test-handlers', async (req: Request, res: Response) => {
       try {
         const message = createTestMessage(processType, timestamp);
         const processor = processorFactory.getProcessor(processType);
-        const result = await processor.process(message);
+        const result = await processor.process(message as Message);
         results.push({ process: processType, success: true, result });
       } catch (error) {
         results.push({ 
@@ -67,62 +75,76 @@ router.post('/test-handlers', async (req: Request, res: Response) => {
       }
     }
 
-    res.json({ success: true, results });
+    return res.json({ success: true, results });
   } catch (error) {
     console.error('[TEST HANDLER] Error:', error instanceof Error ? error.message : 'Unknown error');
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
+    return res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
   }
 });
 
 function createTestMessage(processType: string, timestamp: number): any {
   // Add a test marker to all messages
   const baseMessage = {
-    customer: { 
-      email: TEST_EMAIL,
-      isTestMessage: true // Marker to identify test messages
-    },
-    metadata: { 
-      timestamp,
-      isTest: true,
-      environment: 'production-test'
-    }
+    data: Buffer.from(JSON.stringify({
+      customer: { 
+        email: TEST_EMAIL,
+        isTestMessage: true // Marker to identify test messages
+      },
+      metadata: { 
+        timestamp,
+        isTest: true,
+        environment: 'production-test'
+      }
+    }))
   };
 
   switch (processType) {
     case 'resetPasswordRequest':
       return {
         ...baseMessage,
-        crmProcess: processType,
-        token: `test-token-${timestamp}`
+        data: Buffer.from(JSON.stringify({
+          ...JSON.parse(baseMessage.data.toString()),
+          crmProcess: processType,
+          token: `test-token-${timestamp}`
+        }))
       };
 
     case 'newRegistrationEmail':
       return {
         ...baseMessage,
-        crmProcess: processType
+        data: Buffer.from(JSON.stringify({
+          ...JSON.parse(baseMessage.data.toString()),
+          crmProcess: processType
+        }))
       };
 
     case 'bulkAppraisalEmailUpdate':
       return {
         ...baseMessage,
-        crmProcess: processType,
-        metadata: {
-          ...baseMessage.metadata,
-          sessionId: `test-session-${timestamp}`,
-          origin: 'test',
-          environment: 'test'
-        }
+        data: Buffer.from(JSON.stringify({
+          ...JSON.parse(baseMessage.data.toString()),
+          crmProcess: processType,
+          metadata: {
+            ...JSON.parse(baseMessage.data.toString()).metadata,
+            sessionId: `test-session-${timestamp}`,
+            origin: 'test',
+            environment: 'test'
+          }
+        }))
       };
 
     case 'screenerNotification':
       return {
         ...baseMessage,
-        crmProcess: processType,
-        sessionId: `test-session-${timestamp}`,
-        metadata: {
-          ...baseMessage.metadata,
-          imageUrl: 'https://example.com/test-image.jpg'
-        }
+        data: Buffer.from(JSON.stringify({
+          ...JSON.parse(baseMessage.data.toString()),
+          crmProcess: processType,
+          sessionId: `test-session-${timestamp}`,
+          metadata: {
+            ...JSON.parse(baseMessage.data.toString()).metadata,
+            imageUrl: 'https://example.com/test-image.jpg'
+          }
+        }))
       };
 
     // Add other message types as needed...
