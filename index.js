@@ -8,7 +8,8 @@ const sheetsService = require('./src/services/sheets');
 const databaseService = require('./src/services/database');
 const encryption = require('./src/services/encryption');
 const pubSubService = require('./src/services/pubsub');
-const messageHandler = require('./src/services/message/handler');
+const MessageHandler = require('./src/services/message/handler');
+const messageHandler = new MessageHandler();
 const Logger = require('./src/utils/logger');
 
 const app = express();
