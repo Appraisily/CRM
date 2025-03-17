@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { ProcessorFactory } from '../services/message/processors/ProcessorFactory';
 
 const router = express.Router();
@@ -6,11 +6,12 @@ const TEST_EMAIL = 'ratonxi@gmail.com';
 const processorFactory = new ProcessorFactory();
 
 // Middleware to ensure only authorized access
-const ensureAuthorized = (req, res, next) => {
+const ensureAuthorized = (req: Request, res: Response, next: NextFunction): void => {
   const apiKey = req.headers['x-api-key'];
   // Only allow access with a specific test API key
   if (apiKey !== process.env.TEST_HANDLERS_API_KEY) {
-    return res.status(403).json({ error: 'Unauthorized access to test handlers' });
+    res.status(403).json({ error: 'Unauthorized access to test handlers' });
+    return;
   }
   next();
 };
@@ -18,8 +19,8 @@ const ensureAuthorized = (req, res, next) => {
 router.use(ensureAuthorized);
 
 // Test handlers endpoint
-router.post('/test-handlers', async (req, res) => {
-  const process = req.query.process;
+router.post('/test-handlers', async (req: Request, res: Response) => {
+  const process = req.query.process as string | undefined;
   const timestamp = Date.now();
 
   try {
@@ -41,7 +42,6 @@ router.post('/test-handlers', async (req, res) => {
     // Test all handlers
     const results = [];
     const processes = [
-      'bulkAppraisalEmailUpdate',
       'resetPasswordRequest',
       'newRegistrationEmail',
       'screenerNotification',
@@ -59,18 +59,22 @@ router.post('/test-handlers', async (req, res) => {
         const result = await processor.process(message);
         results.push({ process: processType, success: true, result });
       } catch (error) {
-        results.push({ process: processType, success: false, error: error.message });
+        results.push({ 
+          process: processType, 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        });
       }
     }
 
     res.json({ success: true, results });
   } catch (error) {
-    console.error('[TEST HANDLER] Error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('[TEST HANDLER] Error:', error instanceof Error ? error.message : 'Unknown error');
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
   }
 });
 
-function createTestMessage(processType: string, timestamp: number) {
+function createTestMessage(processType: string, timestamp: number): any {
   // Add a test marker to all messages
   const baseMessage = {
     customer: { 
