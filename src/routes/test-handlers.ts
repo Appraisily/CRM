@@ -1,10 +1,10 @@
 import express, { Request, Response, NextFunction, RequestHandler } from 'express';
-import { ProcessorFactory } from '../services/message/processors/ProcessorFactory';
-import { Message } from '@google-cloud/pubsub';
+import { PubSub } from '@google-cloud/pubsub';
+import Logger from '../utils/logger';
 
 const router = express.Router();
 const TEST_EMAIL = 'ratonxi@gmail.com';
-const processorFactory = new ProcessorFactory();
+const logger = new Logger('Test Handlers');
 
 // Middleware to ensure only authorized access
 const ensureAuthorized: RequestHandler = (req, res, next): void => {
@@ -27,26 +27,63 @@ interface TestResult {
   error?: string;
 }
 
-// Test handlers endpoint
+// Gets the topic name from the subscription name
+function getTopicFromSubscription(subscriptionName: string): string {
+  // In GCP, subscription names often follow the pattern: projects/{project}/subscriptions/{subscription}
+  // The associated topic is typically at: projects/{project}/topics/{topicName}
+  // For simplicity, assume the subscription name is just the last part
+  const parts = subscriptionName.split('/');
+  const baseName = parts[parts.length - 1];
+  
+  // Return the topic name - usually it's similar to the subscription name
+  // but without the -sub suffix if it exists
+  return baseName.replace(/-sub$/, '');
+}
+
+// Test handlers endpoint that publishes messages to PubSub
 const testHandlerRoute: RequestHandler = async (req, res, next) => {
-  const process = req.query.process as string | undefined;
+  const processType = req.query.process as string | undefined;
   const timestamp = Date.now();
 
   try {
+    // Get the subscription name from environment variable
+    const subscriptionName = process.env.PUBSUB_SUBSCRIPTION_NAME;
+    if (!subscriptionName) {
+      throw new Error('PUBSUB_SUBSCRIPTION_NAME environment variable is not set');
+    }
+
+    // Derive the topic name from the subscription name
+    const topicName = getTopicFromSubscription(subscriptionName);
+    logger.info(`Using topic: ${topicName} derived from subscription: ${subscriptionName}`);
+
+    // Create a PubSub client
+    const pubSubClient = new PubSub();
+    const topic = pubSubClient.topic(topicName);
+
     // Add a clear marker in logs for test requests
-    console.log(`[TEST HANDLER] Running test for process: ${process || 'all'}`);
+    logger.info(`[TEST HANDLER] Publishing test message for process: ${processType || 'all'}`); 
 
     // If specific process requested, test only that one
-    if (process) {
-      const message = createTestMessage(process, timestamp);
-      if (!message) {
-        res.status(400).json({ error: `Unknown process type: ${process}` });
+    if (processType) {
+      const messageData = createTestMessageData(processType, timestamp);
+      if (!messageData) {
+        res.status(400).json({ error: `Unknown process type: ${processType}` });
         return;
       }
 
-      const processor = processorFactory.getProcessor(process);
-      const result = await processor.process(message as Message);
-      res.json({ success: true, process, result });
+      // Publish message to PubSub topic
+      const messageId = await publishMessage(topic, messageData);
+      
+      res.json({ 
+        success: true, 
+        process: processType, 
+        result: { 
+          messageId, 
+          topic: topicName,
+          email: TEST_EMAIL,
+          status: 'published'
+        } 
+      });
       return;
     }
 
@@ -65,10 +102,29 @@ const testHandlerRoute: RequestHandler = async (req, res, next) => {
 
     for (const processType of processes) {
       try {
-        const message = createTestMessage(processType, timestamp);
-        const processor = processorFactory.getProcessor(processType);
-        const result = await processor.process(message as Message);
-        results.push({ process: processType, success: true, result });
+        const messageData = createTestMessageData(processType, timestamp);
+        if (!messageData) {
+          results.push({ 
+            process: processType, 
+            success: false, 
+            error: 'Failed to create test message data'
+          });
+          continue;
+        }
+
+        // Publish message to PubSub
+        const messageId = await publishMessage(topic, messageData);
+        
+        results.push({ 
+          process: processType, 
+          success: true, 
+          result: {
+            messageId,
+            topic: topicName,
+            email: TEST_EMAIL,
+            status: 'published'
+          }
+        });
       } catch (error) {
         results.push({ 
           process: processType, 
@@ -80,33 +136,30 @@ const testHandlerRoute: RequestHandler = async (req, res, next) => {
 
     res.json({ success: true, results });
   } catch (error) {
-    console.error('[TEST HANDLER] Error:', error instanceof Error ? error.message : 'Unknown error');
+    logger.error('Error in test handler', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
   }
 };
 
 router.post('/test-handlers', testHandlerRoute);
 
-// Create a mock Message class that implements ack() and nack() methods
-class MockMessage {
-  data: Buffer;
+// Publish a message to PubSub topic
+async function publishMessage(topic: any, data: any): Promise<string> {
+  const dataBuffer = Buffer.from(JSON.stringify(data));
+  logger.info(`Publishing message to topic: ${topic.name}`, { data });
   
-  constructor(data: any) {
-    this.data = Buffer.from(JSON.stringify(data));
-  }
-  
-  ack(): Promise<void> {
-    console.log('Message acknowledged');
-    return Promise.resolve();
-  }
-  
-  nack(): Promise<void> {
-    console.log('Message not acknowledged');
-    return Promise.resolve();
+  try {
+    const messageId = await topic.publish(dataBuffer);
+    logger.success(`Message ${messageId} published to topic: ${topic.name}`);
+    return messageId;
+  } catch (error) {
+    logger.error(`Error publishing to topic: ${topic.name}`, error);
+    throw error;
   }
 }
 
-function createTestMessage(processType: string, timestamp: number): any {
+// Create test message data
+function createTestMessageData(processType: string, timestamp: number): any {
   // Base message data with test marker
   const baseData = {
     customer: { 
@@ -164,13 +217,97 @@ function createTestMessage(processType: string, timestamp: number): any {
       break;
       
     case 'chatSummary':
+      messageData = {
+        ...baseData,
+        crmProcess: processType,
+        chat: {
+          sessionId: `test-session-${timestamp}`,
+          startedAt: new Date(timestamp - 3600000).toISOString(),
+          endedAt: new Date(timestamp).toISOString(),
+          messageCount: 15,
+          satisfactionScore: 4,
+          summary: "Test chat summary",
+          topics: ["art", "pricing", "appraisal"],
+          sentiment: "positive"
+        }
+      };
+      break;
+      
     case 'gmailInteraction':
+      messageData = {
+        ...baseData,
+        crmProcess: processType,
+        email: {
+          messageId: `test-${timestamp}`,
+          threadId: `thread-${timestamp}`,
+          subject: "Test Email Subject",
+          content: "This is a test email content for testing the Gmail processor",
+          timestamp: new Date(timestamp).toISOString(),
+          classification: {
+            intent: "inquiry",
+            urgency: "medium",
+            responseType: "automated",
+            requiresReply: true
+          }
+        }
+      };
+      break;
+      
     case 'appraisalRequest':
+      messageData = {
+        ...baseData,
+        crmProcess: processType,
+        appraisal: {
+          serviceType: "standard",
+          sessionId: `test-session-${timestamp}`,
+          requestDate: new Date(timestamp).toISOString(),
+          status: "pending",
+          editLink: "https://example.com/edit",
+          images: {
+            description: "Test artwork image",
+            customerDescription: "Painting of landscape",
+            appraisersDescription: "Modern oil painting",
+            finalDescription: "Oil painting on canvas, landscape scene"
+          },
+          value: {
+            amount: 1200,
+            currency: "USD",
+            range: {
+              min: 1000,
+              max: 1500
+            }
+          }
+        }
+      };
+      break;
+      
     case 'stripePayment':
+      messageData = {
+        ...baseData,
+        crmProcess: processType,
+        payment: {
+          checkoutSessionId: `cs_test_${timestamp}`,
+          paymentIntentId: `pi_test_${timestamp}`,
+          amount: 4995,
+          currency: "USD",
+          status: "succeeded",
+          metadata: {
+            serviceType: "appraisal",
+            sessionId: `test-session-${timestamp}`
+          }
+        }
+      };
+      break;
+      
     case 'bulkAppraisalFinalized':
       messageData = {
         ...baseData,
-        crmProcess: processType
+        crmProcess: processType,
+        appraisal: {
+          type: "bulk",
+          itemCount: 5,
+          sessionId: `test-bulk-${timestamp}`
+        }
       };
       break;
 
@@ -178,8 +315,7 @@ function createTestMessage(processType: string, timestamp: number): any {
       return null;
   }
   
-  // Return a mock Message object with ack() and nack() methods
-  return new MockMessage(messageData);
+  return messageData;
 }
 
 export default router; 
