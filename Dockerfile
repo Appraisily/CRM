@@ -16,6 +16,7 @@ RUN npm install
 # Copy source code
 COPY src/ ./src/
 COPY email-templates/ ./email-templates/
+COPY index.js ./
 
 # Build TypeScript
 RUN npm run build
@@ -34,5 +35,5 @@ ENV PORT=8080
 # Check if files are in the right place
 RUN ls -la ./dist/utils/ || echo "Utils directory missing"
 
-# Start the application
-CMD [ "npm", "start" ]
+# Start the application using the main index.js entry point
+CMD [ "node", "index.js" ]
