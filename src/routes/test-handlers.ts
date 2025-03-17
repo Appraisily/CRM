@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction, RequestHandler } from 'express';
 import { ProcessorFactory } from '../services/message/processors/ProcessorFactory';
 import { Message } from '@google-cloud/pubsub';
 
@@ -7,7 +7,7 @@ const TEST_EMAIL = 'ratonxi@gmail.com';
 const processorFactory = new ProcessorFactory();
 
 // Middleware to ensure only authorized access
-const ensureAuthorized = (req: Request, res: Response, next: NextFunction): void => {
+const ensureAuthorized: RequestHandler = (req, res, next): void => {
   const apiKey = req.headers['x-api-key'];
   // Only allow access with a specific test API key
   if (apiKey !== process.env.TEST_HANDLERS_API_KEY) {
@@ -27,7 +27,7 @@ interface TestResult {
 }
 
 // Test handlers endpoint
-router.post('/test-handlers', async (req: Request, res: Response): Promise<Response> => {
+const testHandlerRoute: RequestHandler = async (req, res) => {
   const process = req.query.process as string | undefined;
   const timestamp = Date.now();
 
@@ -80,7 +80,9 @@ router.post('/test-handlers', async (req: Request, res: Response): Promise<Respo
     console.error('[TEST HANDLER] Error:', error instanceof Error ? error.message : 'Unknown error');
     return res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
   }
-});
+};
+
+router.post('/test-handlers', testHandlerRoute);
 
 function createTestMessage(processType: string, timestamp: number): any {
   // Add a test marker to all messages
