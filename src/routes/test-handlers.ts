@@ -87,76 +87,99 @@ const testHandlerRoute: RequestHandler = async (req, res, next) => {
 
 router.post('/test-handlers', testHandlerRoute);
 
+// Create a mock Message class that implements ack() and nack() methods
+class MockMessage {
+  data: Buffer;
+  
+  constructor(data: any) {
+    this.data = Buffer.from(JSON.stringify(data));
+  }
+  
+  ack(): Promise<void> {
+    console.log('Message acknowledged');
+    return Promise.resolve();
+  }
+  
+  nack(): Promise<void> {
+    console.log('Message not acknowledged');
+    return Promise.resolve();
+  }
+}
+
 function createTestMessage(processType: string, timestamp: number): any {
-  // Add a test marker to all messages
-  const baseMessage = {
-    data: Buffer.from(JSON.stringify({
-      customer: { 
-        email: TEST_EMAIL,
-        isTestMessage: true // Marker to identify test messages
-      },
-      metadata: { 
-        timestamp,
-        isTest: true,
-        environment: 'production-test'
-      }
-    }))
+  // Base message data with test marker
+  const baseData = {
+    customer: { 
+      email: TEST_EMAIL,
+      isTestMessage: true // Marker to identify test messages
+    },
+    metadata: { 
+      timestamp,
+      isTest: true,
+      environment: 'production-test'
+    }
   };
 
+  let messageData;
+  
   switch (processType) {
     case 'resetPasswordRequest':
-      return {
-        ...baseMessage,
-        data: Buffer.from(JSON.stringify({
-          ...JSON.parse(baseMessage.data.toString()),
-          crmProcess: processType,
-          token: `test-token-${timestamp}`
-        }))
+      messageData = {
+        ...baseData,
+        crmProcess: processType,
+        token: `test-token-${timestamp}`
       };
+      break;
 
     case 'newRegistrationEmail':
-      return {
-        ...baseMessage,
-        data: Buffer.from(JSON.stringify({
-          ...JSON.parse(baseMessage.data.toString()),
-          crmProcess: processType
-        }))
+      messageData = {
+        ...baseData,
+        crmProcess: processType
       };
+      break;
 
     case 'bulkAppraisalEmailUpdate':
-      return {
-        ...baseMessage,
-        data: Buffer.from(JSON.stringify({
-          ...JSON.parse(baseMessage.data.toString()),
-          crmProcess: processType,
-          metadata: {
-            ...JSON.parse(baseMessage.data.toString()).metadata,
-            sessionId: `test-session-${timestamp}`,
-            origin: 'test',
-            environment: 'test'
-          }
-        }))
+      messageData = {
+        ...baseData,
+        crmProcess: processType,
+        metadata: {
+          ...baseData.metadata,
+          sessionId: `test-session-${timestamp}`,
+          origin: 'test',
+          environment: 'test'
+        }
       };
+      break;
 
     case 'screenerNotification':
-      return {
-        ...baseMessage,
-        data: Buffer.from(JSON.stringify({
-          ...JSON.parse(baseMessage.data.toString()),
-          crmProcess: processType,
-          sessionId: `test-session-${timestamp}`,
-          metadata: {
-            ...JSON.parse(baseMessage.data.toString()).metadata,
-            imageUrl: 'https://example.com/test-image.jpg'
-          }
-        }))
+      messageData = {
+        ...baseData,
+        crmProcess: processType,
+        sessionId: `test-session-${timestamp}`,
+        metadata: {
+          ...baseData.metadata,
+          imageUrl: 'https://example.com/test-image.jpg'
+        }
       };
-
-    // Add other message types as needed...
+      break;
+      
+    case 'chatSummary':
+    case 'gmailInteraction':
+    case 'appraisalRequest':
+    case 'stripePayment':
+    case 'bulkAppraisalFinalized':
+      messageData = {
+        ...baseData,
+        crmProcess: processType
+      };
+      break;
 
     default:
       return null;
   }
+  
+  // Return a mock Message object with ack() and nack() methods
+  return new MockMessage(messageData);
 }
 
 export default router; 
