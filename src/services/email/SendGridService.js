@@ -168,6 +168,87 @@ class SendGridService {
       throw error;
     }
   }
+
+  async sendWelcomeEmail(toEmail, templateId) {
+    if (!this.initialized) {
+      throw new InitializationError('SendGrid service not initialized');
+    }
+
+    if (!templateId) {
+      throw new Error('SENDGRID_NEWREGISTRATION template ID is required');
+    }
+
+    this.logger.info('Sending welcome email', {
+      to: toEmail,
+      templateId
+    });
+
+    try {
+      const msg = {
+        to: toEmail,
+        from: this.fromEmail,
+        templateId: templateId,
+        dynamicTemplateData: {
+          subject: 'Welcome to Appraisily',
+          year: new Date().getFullYear()
+        }
+      };
+
+      await sgMail.send(msg);
+      return true;
+    } catch (error) {
+      this.logger.error('SendGrid error sending welcome email', {
+        error: error.message,
+        response: error.response?.body,
+        code: error.code,
+        statusCode: error.statusCode
+      });
+      throw error;
+    }
+  }
+
+  async sendPasswordResetEmail(toEmail, token, templateId) {
+    if (!this.initialized) {
+      throw new InitializationError('SendGrid service not initialized');
+    }
+
+    if (!templateId) {
+      throw new Error('SENDGRID_RESETPASSWORD template ID is required');
+    }
+
+    if (!token) {
+      throw new Error('Reset password token is required');
+    }
+
+    this.logger.info('Sending password reset email', {
+      to: toEmail,
+      templateId
+    });
+
+    try {
+      const msg = {
+        to: toEmail,
+        from: this.fromEmail,
+        templateId: templateId,
+        dynamicTemplateData: {
+          subject: 'Reset Your Password',
+          token: token,
+          year: new Date().getFullYear()
+        }
+      };
+
+      await sgMail.send(msg);
+      return true;
+    } catch (error) {
+      this.logger.error('SendGrid error sending password reset email', {
+        error: error.message,
+        response: error.response?.body,
+        code: error.code,
+        statusCode: error.statusCode
+      });
+      throw error;
+    }
+  }
 }
 
 module.exports = new SendGridService();
