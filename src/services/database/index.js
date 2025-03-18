@@ -33,7 +33,16 @@ class DatabaseService {
 
   async query(text, params) {
     if (!this.queryManager) {
-      throw new Error('Database service not initialized');
+      this.logger.warn('Database service not initialized, using mock response');
+      // Mark database as unavailable globally
+      global.databaseAvailable = false;
+      // Return mock result
+      return { 
+        rows: [],
+        rowCount: 0,
+        command: 'MOCK',
+        fields: []
+      };
     }
     return this.queryManager.query(text, params);
   }

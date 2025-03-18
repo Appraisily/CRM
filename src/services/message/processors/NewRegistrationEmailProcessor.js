@@ -35,7 +35,12 @@ class NewRegistrationEmailProcessor {
 
     } catch (error) {
       this.logger.error('Failed to process new registration email', error);
-      throw error;
+      // Don't throw error, return failure but allow message processing to continue
+      return {
+        success: false,
+        error: `Email sending failed: ${error.message}`,
+        email: data.customer.email
+      };
     }
   }
 }

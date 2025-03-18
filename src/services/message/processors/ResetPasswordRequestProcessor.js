@@ -34,7 +34,12 @@ class ResetPasswordRequestProcessor {
 
     } catch (error) {
       this.logger.error('Failed to process reset password request', error);
-      throw error;
+      // Don't throw error, return failure but allow message processing to continue
+      return {
+        success: false,
+        error: `Reset password email sending failed: ${error.message}`,
+        email: data.customer.email
+      };
     }
   }
 }

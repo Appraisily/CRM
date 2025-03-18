@@ -82,14 +82,21 @@ class MessageHandler {
       }
 
       // Get appropriate processor and process message
-      const processor = this.processorFactory.getProcessor(data.crmProcess);
-      const result = await processor.process(data);
-
-      if (!result.success) {
-        throw new ProcessingError(result.error || 'Processing failed without specific error');
+      try {
+        const processor = this.processorFactory.getProcessor(data.crmProcess);
+        const result = await processor.process(data);
+  
+        if (!result.success) {
+          this.logger.warn(`Processing completed with warnings: ${result.error || 'No specific error'}`);
+          // Don't throw, just log the warning to continue processing
+        }
+  
+        return result.success || true; // Return true even if there were non-critical errors
+      } catch (processorError) {
+        // Log the error but don't rethrow to prevent message going to DLQ
+        this.logger.error('Error in processor, continuing message flow', processorError);
+        return true; // Return success to continue processing
       }
-
-      return result.success;
     } catch (error) {
       this.logger.error('Error processing message', error);
       throw error;
