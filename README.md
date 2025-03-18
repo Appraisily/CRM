@@ -65,11 +65,104 @@ The service provides a secure REST API for accessing customer data:
    - Results summary
    - Timestamps
 
+### Testing Message Handlers
+
+The service provides a secure endpoint for testing message handlers in production:
+
+```http
+POST /api/test-handlers
+```
+
+**Authentication:**
+- Requires API key in `x-api-key` header
+- Must match `TEST_HANDLERS_API_KEY` environment variable
+
+**Usage:**
+1. Test all handlers:
+   ```bash
+   curl -X POST https://your-domain/api/test-handlers \
+     -H "x-api-key: your-test-key"
+   ```
+
+2. Test specific handler:
+   ```bash
+   curl -X POST "https://your-domain/api/test-handlers?process=resetPasswordRequest" \
+     -H "x-api-key: your-test-key"
+   ```
+
+**Configuration:**
+- All test emails are sent to: `ratonxi@gmail.com`
+- Results include success/failure status and comprehensive logging
+- Test messages are marked with metadata for tracking
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "process": "resetPasswordRequest",
+      "success": true,
+      "result": {}
+    },
+    {
+      "process": "newRegistrationEmail",
+      "success": true,
+      "result": {}
+    }
+  ]
+}
+```
+
+**Available Test Processes:**
+- `resetPasswordRequest`
+- `newRegistrationEmail`
+- `screenerNotification`
+- `chatSummary`
+- `gmailInteraction`
+- `appraisalRequest`
+- `stripePayment`
+- `bulkAppraisalFinalized`
+
 ### Message Types
 
 The service processes the following PubSub message types (✓ = fully implemented, ⚠️ = partial implementation, ❌ = not implemented):
 
-1. **Bulk Appraisal Email Update** (`bulkAppraisalEmailUpdate`) ✓
+1. **Reset Password Request** (`resetPasswordRequest`) ✓
+   - Triggered when a user requests a password reset
+   - Sends password reset email with secure token
+   - Fields:
+     ```json
+     {
+       "crmProcess": "resetPasswordRequest",
+       "customer": {
+         "email": "string"
+       },
+       "token": "string",
+       "metadata": {
+         "timestamp": "number"
+       }
+     }
+     ```
+
+2. **New Registration Email** (`newRegistrationEmail`) ✓
+   - Triggered when a new user registers
+   - Sends welcome email and onboarding information
+   - Fields:
+     ```json
+     {
+       "crmProcess": "newRegistrationEmail",
+       "customer": {
+         "email": "string",
+         "name": "string (optional)"
+       },
+       "metadata": {
+         "timestamp": "number"
+       }
+     }
+     ```
+
+3. **Bulk Appraisal Email Update** (`bulkAppraisalEmailUpdate`) ✓
    - Triggered when a user starts a bulk appraisal submission
    - Creates initial database records and sends recovery email
    - Fields:
@@ -88,7 +181,7 @@ The service processes the following PubSub message types (✓ = fully implemente
      }
      ```
 
-2. **Screener Notification** (`screenerNotification`) ✓
+4. **Screener Notification** (`screenerNotification`) ✓
    - Triggered when a user submits an image for initial screening
    - Sends free analysis report and schedules personal offer
    - Fields:
@@ -107,7 +200,7 @@ The service processes the following PubSub message types (✓ = fully implemente
      }
      ```
 
-3. **Chat Summary** (`chatSummary`) ✓
+5. **Chat Summary** (`chatSummary`) ✓
    - Records completed chat session details
    - Stores transcript and satisfaction score
    - Fields:
@@ -134,7 +227,7 @@ The service processes the following PubSub message types (✓ = fully implemente
      }
      ```
 
-4. **Gmail Interaction** (`gmailInteraction`) ✓
+6. **Gmail Interaction** (`gmailInteraction`) ✓
    - Processes email interactions from Gmail
    - Records email content and classification
    - Fields:
@@ -165,7 +258,7 @@ The service processes the following PubSub message types (✓ = fully implemente
      }
      ```
 
-5. **Appraisal Request** (`appraisalRequest`) ✓
+7. **Appraisal Request** (`appraisalRequest`) ✓
    - Handles professional appraisal requests
    - Records appraisal details and generates documents
    - Fields:
@@ -204,7 +297,7 @@ The service processes the following PubSub message types (✓ = fully implemente
      }
      ```
 
-6. **Stripe Payment** (`stripePayment`) ✓
+8. **Stripe Payment** (`stripePayment`) ✓
    - Records completed purchases and payment information
    - Updates user purchase history and activity
    - Fields:
@@ -235,7 +328,7 @@ The service processes the following PubSub message types (✓ = fully implemente
      }
      ```
 
-7. **Bulk Appraisal Finalized** (`bulkAppraisalFinalized`) ⚠️
+9. **Bulk Appraisal Finalized** (`bulkAppraisalFinalized`) ⚠️
    - Handles completed bulk appraisal submissions
    - Updates status and pricing information
    - Current Implementation: Basic message acknowledgment only
@@ -251,11 +344,6 @@ The service processes the following PubSub message types (✓ = fully implemente
          "type": "string",
          "itemCount": "number",
          "sessionId": "string"
-       },
-       "metadata": {
-         "origin": "string",
-         "environment": "string",
-         "timestamp": "number"
        }
      }
      ```
