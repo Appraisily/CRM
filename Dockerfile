@@ -1,39 +1,22 @@
 # Dockerfile
 
-# Use Node.js LTS
-FROM node:18-slim
+# Usa una imagen oficial de Node.js
+FROM node:18
 
-# Create and set working directory
+# Crear y cambiar al directorio de la app
 WORKDIR /usr/src/app
 
-# Copy package files
+# Copiar los archivos de dependencia
 COPY package*.json ./
-COPY tsconfig.json ./
 
-# Install dependencies
-RUN npm install
+# Instalar dependencias
+RUN npm install --only=production
 
-# Copy source code
-COPY src/ ./src/
-COPY email-templates/ ./email-templates/
-COPY index.js ./
+# Copiar el resto de los archivos de la app
+COPY . .
 
-# Build TypeScript
-RUN npm run build
-
-# JavaScript files should be compiled by TypeScript with allowJs now
-
-# Remove development dependencies
-RUN npm prune --production
-
-# Expose port
+# Exponer el puerto
 EXPOSE 8080
 
-# Set environment variable
-ENV PORT=8080
-
-# Check if files are in the right place
-RUN ls -la ./dist/utils/ || echo "Utils directory missing"
-
-# Start the application using the main index.js entry point
-CMD [ "node", "index.js" ]
+# Comando para correr la app
+CMD [ "npm", "start" ]

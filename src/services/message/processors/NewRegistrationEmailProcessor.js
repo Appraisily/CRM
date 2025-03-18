@@ -1,9 +1,10 @@
 const Logger = require('../../../utils/logger');
-const sendGridService = require('../../email/SendGridService');
+const { SendGridService } = require('../../email');
 
 class NewRegistrationEmailProcessor {
   constructor() {
     this.logger = new Logger('New Registration Email Processor');
+    this.sendGridService = new SendGridService();
   }
 
   async process(data) {
@@ -13,18 +14,15 @@ class NewRegistrationEmailProcessor {
         name: data.customer.name || 'Valued Customer'
       });
 
-      const msg = {
+      await this.sendGridService.sendDynamicTemplateEmail({
         to: data.customer.email,
-        from: sendGridService.fromEmail,
         templateId: process.env.SENDGRID_NEWREGISTRATION,
         dynamicTemplateData: {
           name: data.customer.name || 'Valued Customer',
           email: data.customer.email,
           year: new Date().getFullYear()
         }
-      };
-
-      await sendGridService.send(msg);
+      });
 
       this.logger.success('New registration email sent successfully');
       
@@ -35,12 +33,7 @@ class NewRegistrationEmailProcessor {
 
     } catch (error) {
       this.logger.error('Failed to process new registration email', error);
-      // Don't throw error, return failure but allow message processing to continue
-      return {
-        success: false,
-        error: `Email sending failed: ${error.message}`,
-        email: data.customer.email
-      };
+      throw error;
     }
   }
 }

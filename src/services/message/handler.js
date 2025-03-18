@@ -8,8 +8,7 @@ const {
   validateStripePayment,
   validateBulkAppraisalEmailUpdate,
   validateBulkAppraisalFinalized,
-  validateResetPasswordRequest,
-  validateNewRegistrationEmail
+  validateResetPasswordRequest
 } = require('./validators');
 const { ValidationError, ProcessingError } = require('../../utils/errors');
 
@@ -51,8 +50,7 @@ class MessageHandler {
         stripePayment: validateStripePayment,
         bulkAppraisalEmailUpdate: validateBulkAppraisalEmailUpdate,
         bulkAppraisalFinalized: validateBulkAppraisalFinalized,
-        resetPasswordRequest: validateResetPasswordRequest,
-        newRegistrationEmail: validateNewRegistrationEmail
+        resetPasswordRequest: validateResetPasswordRequest
       };
 
       // Debug logging for validator lookup
@@ -82,21 +80,14 @@ class MessageHandler {
       }
 
       // Get appropriate processor and process message
-      try {
-        const processor = this.processorFactory.getProcessor(data.crmProcess);
-        const result = await processor.process(data);
-  
-        if (!result.success) {
-          this.logger.warn(`Processing completed with warnings: ${result.error || 'No specific error'}`);
-          // Don't throw, just log the warning to continue processing
-        }
-  
-        return result.success || true; // Return true even if there were non-critical errors
-      } catch (processorError) {
-        // Log the error but don't rethrow to prevent message going to DLQ
-        this.logger.error('Error in processor, continuing message flow', processorError);
-        return true; // Return success to continue processing
+      const processor = this.processorFactory.getProcessor(data.crmProcess);
+      const result = await processor.process(data);
+
+      if (!result.success) {
+        throw new ProcessingError(result.error || 'Processing failed without specific error');
       }
+
+      return result.success;
     } catch (error) {
       this.logger.error('Error processing message', error);
       throw error;
@@ -106,4 +97,4 @@ class MessageHandler {
   }
 }
 
-module.exports = MessageHandler;
+module.exports = new MessageHandler();

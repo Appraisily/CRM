@@ -2,15 +2,13 @@ const express = require('express');
 const { loadSecrets } = require('./src/config/secrets');
 const corsMiddleware = require('./src/middleware/cors');
 const customerRoutes = require('./src/routes/customers');
-const testHandlersRouter = require('./dist/routes/test-handlers').default;
 const cloudServices = require('./src/services/storage');
 const emailService = require('./src/services/email');
 const sheetsService = require('./src/services/sheets');
 const databaseService = require('./src/services/database');
 const encryption = require('./src/services/encryption');
 const pubSubService = require('./src/services/pubsub');
-const MessageHandler = require('./src/services/message/handler');
-const messageHandler = new MessageHandler();
+const messageHandler = require('./src/services/message/handler');
 const Logger = require('./src/utils/logger');
 
 const app = express();
@@ -25,7 +23,6 @@ app.use(corsMiddleware);
 
 // API Routes
 app.use('/api/customers', customerRoutes);
-app.use('/api', testHandlersRouter);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -42,17 +39,8 @@ const init = async () => {
     const { secrets, keyFilePath } = await loadSecrets();
 
     // Initialize database service
-    let dbInitialized = false;
-    try {
-      logger.info('Initializing database service');
-      await databaseService.initialize();
-      dbInitialized = true;
-      logger.success('Database service initialized successfully');
-    } catch (dbError) {
-      logger.warn('Database initialization failed, continuing without database', dbError);
-      // Set application state to indicate database is unavailable
-      global.databaseAvailable = false;
-    }
+    logger.info('Initializing database service');
+    await databaseService.initialize();
 
     // Initialize cloud storage service
     logger.info('Initializing cloud storage service');
@@ -94,15 +82,6 @@ const init = async () => {
       secrets.DIRECT_API_KEY
     );
 
-    // Update health check to report database status
-    app.get('/health', (req, res) => {
-      res.status(200).json({
-        status: 'healthy',
-        timestamp: Date.now(),
-        database: dbInitialized ? 'connected' : 'unavailable'
-      });
-    });
-
     const PORT = process.env.PORT || 8080;
     app.listen(PORT, () => {
       logger.success(`CRM service is running on port ${PORT}`);
@@ -118,15 +97,7 @@ const init = async () => {
   const handleShutdown = async (signal) => {
     logger.info(`${signal} received. Starting graceful shutdown...`);
     try {
-      // Only disconnect database if it was initialized
-      if (global.databaseAvailable !== false) {
-        try {
-          await databaseService.disconnect();
-        } catch (dbError) {
-          logger.warn('Error disconnecting from database', dbError);
-        }
-      }
-      
+      await databaseService.disconnect();
       await pubSubService.shutdown();
       logger.success('PubSub subscription closed successfully');
       process.exit(0);

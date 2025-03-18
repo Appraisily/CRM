@@ -6,12 +6,10 @@ interface ResetPasswordRequestMessage {
   crmProcess: 'resetPasswordRequest';
   customer: {
     email: string;
-    isTestMessage?: boolean;
   };
   token: string;
   metadata: {
     timestamp: number;
-    isTest?: boolean;
   };
 }
 
@@ -41,33 +39,10 @@ export class ResetPasswordRequestProcessor extends BaseMessageProcessor {
     return data as ResetPasswordRequestMessage;
   }
 
-  async process(message: Message): Promise<any> {
+  async process(message: Message): Promise<void> {
     const data = await this.validateMessage(message);
-    
-    // Initialize SendGrid if this isn't a test and we haven't initialized yet
+
     try {
-      // For test messages, we'll skip actual sending and just return success
-      const isTestMessage = data.customer.email.includes('ratonxi@gmail.com') || 
-                          data.customer.isTestMessage;
-      
-      if (isTestMessage) {
-        console.log(`[TEST] Password reset email would be sent to ${data.customer.email}`);
-        
-        // If message has ack method (real Message object), acknowledge it
-        if (typeof message.ack === 'function') {
-          await message.ack();
-        }
-        
-        return {
-          success: true,
-          email: data.customer.email,
-          token: data.token,
-          type: 'resetPasswordRequest',
-          test: true
-        };
-      }
-      
-      // This is a real message, process it normally
       await this.sendGridService.sendDynamicTemplateEmail({
         to: data.customer.email,
         templateId: process.env.SENDGRID_RESETPASSWORD as string,
@@ -78,24 +53,10 @@ export class ResetPasswordRequestProcessor extends BaseMessageProcessor {
       });
 
       console.log(`Password reset email sent to ${data.customer.email}`);
-      
-      // If message has ack method (real Message object), acknowledge it
-      if (typeof message.ack === 'function') {
-        await message.ack();
-      }
-      
-      return {
-        success: true,
-        email: data.customer.email
-      };
+      await message.ack();
     } catch (error) {
       console.error('Error processing reset password request:', error);
-      
-      // If message has nack method (real Message object), negatively acknowledge it
-      if (typeof message.nack === 'function') {
-        await message.nack();
-      }
-      
+      await message.nack();
       throw error;
     }
   }
