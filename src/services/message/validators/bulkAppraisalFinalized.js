@@ -33,7 +33,7 @@ function validateBulkAppraisalFinalized(data) {
 
   // Validate appraisal data
   if (data.appraisal && typeof data.appraisal === 'object') {
-    const validTypes = ['regular', 'insurance', 'IRS'];
+    const validTypes = ['regular', 'insurance', 'IRS', 'bulk'];
     if (!data.appraisal.type) {
       errors.push('Missing required field: appraisal.type');
     } else if (!validTypes.includes(data.appraisal.type)) {
@@ -53,14 +53,12 @@ function validateBulkAppraisalFinalized(data) {
 
   // Validate metadata
   if (data.metadata && typeof data.metadata === 'object') {
-    if (!data.metadata.origin) {
-      errors.push('Missing required field: metadata.origin');
-    } else if (typeof data.metadata.origin !== 'string') {
+    if (data.metadata.origin && typeof data.metadata.origin !== 'string') {
       errors.push('Invalid type for metadata.origin: expected string');
     }
     if (!data.metadata.environment) {
       errors.push('Missing required field: metadata.environment');
-    } else if (!['production', 'development'].includes(data.metadata.environment)) {
+    } else if (!['production', 'development', 'production-test'].includes(data.metadata.environment)) {
       errors.push('Invalid environment value');
     }
     if (!data.metadata.timestamp) {
@@ -75,3 +73,5 @@ function validateBulkAppraisalFinalized(data) {
     errors
   };
 }
+
+module.exports = validateBulkAppraisalFinalized;

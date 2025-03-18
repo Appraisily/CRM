@@ -1,9 +1,9 @@
 import express, { Request, Response, NextFunction, RequestHandler } from 'express';
 import { PubSub } from '@google-cloud/pubsub';
 import Logger from '../utils/logger';
+import { createTestMessageData, TEST_EMAIL } from '../scripts/test-data';
 
 const router = express.Router();
-const TEST_EMAIL = 'ratonxi@gmail.com';
 const logger = new Logger('Test Handlers');
 
 // Middleware to ensure only authorized access
@@ -19,6 +19,156 @@ const ensureAuthorized: RequestHandler = (req, res, next): void => {
 };
 
 router.use(ensureAuthorized);
+
+// Route to just validate message data without processing
+router.post('/validate', (req: Request, res: Response, next: NextFunction) => {
+  (async () => {
+    try {
+      const { processType, messageData } = req.body;
+      
+      if (!processType || !messageData) {
+        return res.status(400).json({ error: 'Missing required fields: processType and messageData' });
+      }
+      
+      // Import validators
+      const validators = require('../services/message/validators');
+      const validator = validators[`validate${processType.charAt(0).toUpperCase() + processType.slice(1)}`];
+      
+      if (!validator || typeof validator !== 'function') {
+        return res.status(400).json({ 
+          error: `No validator found for process type: ${processType}`,
+          availableValidators: Object.keys(validators)
+            .filter(key => key.startsWith('validate'))
+            .map(key => key.replace('validate', ''))
+        });
+      }
+      
+      // Run validation
+      const validation = validator(messageData);
+      
+      return res.json({
+        processType,
+        isValid: validation.isValid,
+        errors: validation.errors || [],
+        messageData
+      });
+    } catch (error) {
+      logger.error('Error in validation handler', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
+    }
+  })().catch(next);
+});
+
+// Route to validate test data templates
+router.get('/validate-templates', (req: Request, res: Response, next: NextFunction) => {
+  (async () => {
+    try {
+      const processType = req.query.process as string | undefined;
+      const timestamp = Date.now();
+      
+      // Import validators
+      const validators = require('../services/message/validators');
+      
+      const results: any[] = [];
+      
+      // If specific process requested, test only that one
+      if (processType) {
+        const messageData = createTestMessageData(processType, timestamp);
+        if (!messageData) {
+          return res.status(400).json({ error: `Unknown process type: ${processType}` });
+        }
+        
+        const validatorName = `validate${processType.charAt(0).toUpperCase() + processType.slice(1)}`;
+        const validator = validators[validatorName];
+        
+        if (!validator || typeof validator !== 'function') {
+          return res.status(400).json({ 
+            error: `No validator found for process type: ${processType}`,
+            validatorName,
+            availableValidators: Object.keys(validators)
+              .filter(key => key.startsWith('validate'))
+              .map(key => key.replace('validate', ''))
+          });
+        }
+        
+        // Run validation
+        const validation = validator(messageData);
+        
+        return res.json({
+          processType,
+          isValid: validation.isValid,
+          errors: validation.errors || [],
+          messageData
+        });
+      }
+      
+      // Test all process types
+      const processes = [
+        'resetPasswordRequest',
+        'newRegistrationEmail',
+        'screenerNotification',
+        'chatSummary',
+        'gmailInteraction',
+        'appraisalRequest',
+        'stripePayment',
+        'bulkAppraisalFinalized',
+        'bulkAppraisalEmailUpdate'
+      ];
+      
+      for (const proc of processes) {
+        try {
+          const messageData = createTestMessageData(proc, timestamp);
+          if (!messageData) {
+            results.push({
+              processType: proc,
+              isValid: false,
+              error: 'Failed to create test message data'
+            });
+            continue;
+          }
+          
+          const validatorName = `validate${proc.charAt(0).toUpperCase() + proc.slice(1)}`;
+          const validator = validators[validatorName];
+          
+          if (!validator || typeof validator !== 'function') {
+            results.push({
+              processType: proc,
+              isValid: false,
+              error: `No validator found (${validatorName})`
+            });
+            continue;
+          }
+          
+          // Run validation
+          const validation = validator(messageData);
+          
+          results.push({
+            processType: proc,
+            isValid: validation.isValid,
+            errors: validation.errors || [],
+            messageData: validation.isValid ? undefined : messageData // Only include data if invalid
+          });
+        } catch (error) {
+          results.push({
+            processType: proc,
+            isValid: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+      
+      return res.json({
+        results,
+        timestamp,
+        validResults: results.filter(r => r.isValid).length,
+        invalidResults: results.filter(r => !r.isValid).length
+      });
+    } catch (error) {
+      logger.error('Error in validation templates handler', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
+    }
+  })().catch(next);
+});
 
 interface TestResult {
   process: string;
@@ -40,12 +190,231 @@ function getTopicFromSubscription(subscriptionName: string): string {
   return baseName.replace(/-sub$/, '');
 }
 
+// POST route for simulation with custom message
+router.post('/simulate', (req: Request, res: Response, next: NextFunction) => {
+  (async () => {
+    try {
+      const { processType, messageData } = req.body;
+      
+      if (!processType || !messageData) {
+        return res.status(400).json({ error: 'Missing required fields: processType and messageData' });
+      }
+      
+      // Import the message handler directly for simulation
+      const MessageHandler = require('../services/message/handler');
+      const handler = new MessageHandler();
+      
+      logger.info(`[SIMULATION] Processing message for: ${processType}`, { messageData });
+      
+      // Create a fake PubSub message structure
+      const fakeMessage = {
+        id: `sim-${Date.now()}`,
+        data: Buffer.from(JSON.stringify(messageData)),
+        attributes: { timestamp: new Date().toISOString() },
+        ack: () => logger.info('Message acknowledged (simulated)')
+      };
+      
+      try {
+        const result = await handler.handleMessage(fakeMessage);
+        res.json({
+          success: true,
+          process: processType,
+          result: {
+            simulated: true,
+            messageData,
+            processingResult: result
+          }
+        });
+      } catch (error) {
+        logger.error(`Error in message handler simulation for ${processType}`, error);
+        res.status(500).json({
+          success: false,
+          process: processType,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        });
+      }
+    } catch (error) {
+      logger.error('Error in simulation handler', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
+    }
+  })().catch(next);
+});
+
+// POST route for simulation with generated test data
+router.post('/simulate-process/:processType', (req: Request, res: Response, next: NextFunction) => {
+  (async () => {
+    try {
+      const { processType } = req.params;
+      const timestamp = Date.now();
+      
+      // Generate test message data for the specified process
+      const messageData = createTestMessageData(processType, timestamp);
+      if (!messageData) {
+        return res.status(400).json({ error: `Unknown process type: ${processType}` });
+      }
+      
+      // Allow request body to override parts of the generated message
+      if (req.body && typeof req.body === 'object') {
+        Object.assign(messageData, req.body);
+      }
+      
+      // Import the message handler
+      const MessageHandler = require('../services/message/handler');
+      const handler = new MessageHandler();
+      
+      logger.info(`[SIMULATION] Processing generated message for: ${processType}`, { messageData });
+      
+      // Create a fake PubSub message structure
+      const fakeMessage = {
+        id: `sim-${timestamp}`,
+        data: Buffer.from(JSON.stringify(messageData)),
+        attributes: { timestamp: new Date(timestamp).toISOString() },
+        ack: () => logger.info('Message acknowledged (simulated)')
+      };
+      
+      try {
+        const result = await handler.handleMessage(fakeMessage);
+        res.json({
+          success: true,
+          process: processType,
+          result: {
+            simulated: true,
+            messageData,
+            processingResult: result
+          }
+        });
+      } catch (error) {
+        logger.error(`Error in message handler simulation for ${processType}`, error);
+        res.status(500).json({
+          success: false,
+          process: processType,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        });
+      }
+    } catch (error) {
+      logger.error('Error in simulation handler', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
+    }
+  })().catch(next);
+});
+
 // Test handlers endpoint that publishes messages to PubSub
 const testHandlerRoute: RequestHandler = async (req, res, next) => {
   const processType = req.query.process as string | undefined;
   const timestamp = Date.now();
+  const customMessage = req.body?.message; // Allow custom message data from request body
+  const simulateMode = req.query.simulate === 'true'; // Simulate directly without publishing
 
   try {
+    if (simulateMode) {
+      // Simulate message handler directly without publishing to PubSub
+      logger.info(`[TEST HANDLER] Simulating message processing for: ${processType || 'all'}`);
+      
+      // Import the message handler directly for simulation
+      const MessageHandler = require('../services/message/handler');
+      const handler = new MessageHandler();
+      
+      if (processType) {
+        // Simulate a specific process
+        const messageData = customMessage || createTestMessageData(processType, timestamp);
+        if (!messageData) {
+          res.status(400).json({ error: `Unknown process type: ${processType}` });
+          return;
+        }
+        
+        logger.info(`Simulating message processing for: ${processType}`, { messageData });
+        
+        try {
+          // Create a fake PubSub message structure
+          const fakeMessage = {
+            id: `fake-message-${timestamp}`,
+            data: Buffer.from(JSON.stringify(messageData)),
+            attributes: { timestamp: new Date(timestamp).toISOString() },
+            ack: () => logger.info('Message acknowledged (simulated)')
+          };
+          
+          const result = await handler.handleMessage(fakeMessage);
+          res.json({
+            success: true,
+            process: processType,
+            result: {
+              simulated: true,
+              messageData,
+              processingResult: result
+            }
+          });
+        } catch (error) {
+          logger.error(`Error simulating message handler for ${processType}`, error);
+          res.status(500).json({
+            success: false,
+            process: processType,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined
+          });
+        }
+        return;
+      }
+      
+      // Simulate all handlers
+      const results: TestResult[] = [];
+      const processes = [
+        'resetPasswordRequest',
+        'newRegistrationEmail',
+        'screenerNotification',
+        'chatSummary',
+        'gmailInteraction',
+        'appraisalRequest',
+        'stripePayment',
+        'bulkAppraisalFinalized'
+      ];
+      
+      for (const proc of processes) {
+        try {
+          const messageData = createTestMessageData(proc, timestamp);
+          if (!messageData) {
+            results.push({
+              process: proc,
+              success: false,
+              error: 'Failed to create test message data'
+            });
+            continue;
+          }
+          
+          logger.info(`Simulating message processing for: ${proc}`);
+          
+          // Create a fake PubSub message structure
+          const fakeMessage = {
+            id: `fake-message-${timestamp}-${proc}`,
+            data: Buffer.from(JSON.stringify(messageData)),
+            attributes: { timestamp: new Date(timestamp).toISOString() },
+            ack: () => logger.info(`Message acknowledged (simulated) for ${proc}`)
+          };
+          
+          const result = await handler.handleMessage(fakeMessage);
+          results.push({
+            process: proc,
+            success: true,
+            result: {
+              simulated: true,
+              processingResult: result
+            }
+          });
+        } catch (error) {
+          results.push({
+            process: proc,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+      
+      res.json({ success: true, results });
+      return;
+    }
+    
+    // Regular PubSub publishing mode
     // Get the subscription name from environment variable
     const subscriptionName = process.env.PUBSUB_SUBSCRIPTION_NAME;
     if (!subscriptionName) {
@@ -65,7 +434,7 @@ const testHandlerRoute: RequestHandler = async (req, res, next) => {
 
     // If specific process requested, test only that one
     if (processType) {
-      const messageData = createTestMessageData(processType, timestamp);
+      const messageData = customMessage || createTestMessageData(processType, timestamp);
       if (!messageData) {
         res.status(400).json({ error: `Unknown process type: ${processType}` });
         return;
@@ -81,7 +450,8 @@ const testHandlerRoute: RequestHandler = async (req, res, next) => {
           messageId, 
           topic: topicName,
           email: TEST_EMAIL,
-          status: 'published'
+          status: 'published',
+          messageData
         } 
       });
       return;
@@ -122,7 +492,8 @@ const testHandlerRoute: RequestHandler = async (req, res, next) => {
             messageId,
             topic: topicName,
             email: TEST_EMAIL,
-            status: 'published'
+            status: 'published',
+            messageData
           }
         });
       } catch (error) {
@@ -158,185 +529,6 @@ async function publishMessage(topic: any, data: any): Promise<string> {
   }
 }
 
-// Create test message data
-function createTestMessageData(processType: string, timestamp: number): any {
-  // Base message data with test marker
-  const baseData = {
-    customer: { 
-      email: TEST_EMAIL,
-      isTestMessage: true // Marker to identify test messages
-    },
-    metadata: { 
-      timestamp,
-      isTest: true,
-      environment: 'production-test'
-    }
-  };
+// Using imported createTestMessageData from test-data.js
 
-  let messageData;
-  
-  switch (processType) {
-    case 'resetPasswordRequest':
-      messageData = {
-        ...baseData,
-        crmProcess: processType,
-        token: `test-token-${timestamp}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}`
-      };
-      break;
-
-    case 'newRegistrationEmail':
-      messageData = {
-        ...baseData,
-        crmProcess: processType
-      };
-      break;
-
-    case 'bulkAppraisalEmailUpdate':
-      messageData = {
-        ...baseData,
-        crmProcess: processType,
-        metadata: {
-          ...baseData.metadata,
-          sessionId: `test-session-${timestamp}`,
-          origin: 'test',
-          environment: 'test'
-        }
-      };
-      break;
-
-    case 'screenerNotification':
-      messageData = {
-        ...baseData,
-        crmProcess: processType,
-        sessionId: `test-session-${timestamp}`,
-        timestamp: timestamp, // Required as a top-level field, not just in metadata
-        metadata: {
-          ...baseData.metadata,
-          imageUrl: 'https://example.com/test-image.jpg'
-        }
-      };
-      break;
-      
-    case 'chatSummary':
-      messageData = {
-        ...baseData,
-        crmProcess: processType,
-        chat: {
-          sessionId: `test-session-${timestamp}`,
-          startedAt: new Date(timestamp - 3600000).toISOString(),
-          endedAt: new Date(timestamp).toISOString(),
-          messageCount: 15,
-          satisfactionScore: 4,
-          summary: "Test chat summary",
-          topics: ["art", "pricing", "appraisal"],
-          sentiment: "positive"
-        }
-      };
-      break;
-      
-    case 'gmailInteraction':
-      messageData = {
-        ...baseData,
-        crmProcess: processType,
-        email: {
-          messageId: `test-${timestamp}`,
-          threadId: `thread-${timestamp}`,
-          subject: "Test Email Subject",
-          content: "This is a test email content for testing the Gmail processor",
-          timestamp: new Date(timestamp).toISOString(),
-          classification: {
-            intent: "inquiry",
-            urgency: "medium",
-            responseType: "automated",
-            requiresReply: true
-          },
-          attachments: [], // Required field
-          response: {      // Required field
-            status: "pending",
-            text: "",
-            sentAt: null
-          }
-        }
-      };
-      break;
-      
-    case 'appraisalRequest':
-      messageData = {
-        ...baseData,
-        crmProcess: processType,
-        customer: {
-          ...baseData.customer,
-          name: "Test Customer" // Required field
-        },
-        appraisal: {
-          serviceType: "standard",
-          sessionId: `test-session-${timestamp}`,
-          requestDate: new Date(timestamp).toISOString(),
-          status: "pending",
-          editLink: "https://example.com/edit",
-          images: {
-            description: "Test artwork image",
-            customerDescription: "Painting of landscape",
-            appraisersDescription: "Modern oil painting",
-            finalDescription: "Oil painting on canvas, landscape scene"
-          },
-          value: {
-            amount: 1200,
-            currency: "USD",
-            range: {
-              min: 1000,
-              max: 1500
-            }
-          },
-          documents: [], // Required field
-          publishing: {   // Required field
-            status: "private",
-            publishDate: null
-          }
-        }
-      };
-      break;
-      
-    case 'stripePayment':
-      messageData = {
-        ...baseData,
-        crmProcess: processType,
-        customer: {
-          ...baseData.customer,
-          name: "Test Customer",
-          stripeCustomerId: `cus_test_${timestamp}`
-        },
-        payment: {
-          checkoutSessionId: `cs_test_${timestamp}`,
-          paymentIntentId: `pi_test_${timestamp}`,
-          amount: 4995,
-          currency: "USD",
-          status: "succeeded",
-          metadata: {
-            serviceType: "appraisal",
-            sessionId: `test-session-${timestamp}`
-          }
-        }
-      };
-      break;
-      
-    case 'bulkAppraisalFinalized':
-      messageData = {
-        ...baseData,
-        crmProcess: processType,
-        appraisal: {
-          type: "bulk",
-          itemCount: 5,
-          sessionId: `test-bulk-${timestamp}`
-        }
-      };
-      break;
-
-    default:
-      return null;
-  }
-  
-  return messageData;
-}
-
-export default router; 
+export default router;
