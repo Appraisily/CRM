@@ -180,7 +180,7 @@ function createTestMessageData(processType: string, timestamp: number): any {
       messageData = {
         ...baseData,
         crmProcess: processType,
-        token: `test-token-${timestamp}`
+        token: `test-token-${timestamp}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}`
       };
       break;
 
@@ -209,6 +209,7 @@ function createTestMessageData(processType: string, timestamp: number): any {
         ...baseData,
         crmProcess: processType,
         sessionId: `test-session-${timestamp}`,
+        timestamp: timestamp, // Required as a top-level field, not just in metadata
         metadata: {
           ...baseData.metadata,
           imageUrl: 'https://example.com/test-image.jpg'
@@ -248,6 +249,12 @@ function createTestMessageData(processType: string, timestamp: number): any {
             urgency: "medium",
             responseType: "automated",
             requiresReply: true
+          },
+          attachments: [], // Required field
+          response: {      // Required field
+            status: "pending",
+            text: "",
+            sentAt: null
           }
         }
       };
@@ -257,6 +264,10 @@ function createTestMessageData(processType: string, timestamp: number): any {
       messageData = {
         ...baseData,
         crmProcess: processType,
+        customer: {
+          ...baseData.customer,
+          name: "Test Customer" // Required field
+        },
         appraisal: {
           serviceType: "standard",
           sessionId: `test-session-${timestamp}`,
@@ -276,6 +287,11 @@ function createTestMessageData(processType: string, timestamp: number): any {
               min: 1000,
               max: 1500
             }
+          },
+          documents: [], // Required field
+          publishing: {   // Required field
+            status: "private",
+            publishDate: null
           }
         }
       };
@@ -285,6 +301,11 @@ function createTestMessageData(processType: string, timestamp: number): any {
       messageData = {
         ...baseData,
         crmProcess: processType,
+        customer: {
+          ...baseData.customer,
+          name: "Test Customer",
+          stripeCustomerId: `cus_test_${timestamp}`
+        },
         payment: {
           checkoutSessionId: `cs_test_${timestamp}`,
           paymentIntentId: `pi_test_${timestamp}`,
