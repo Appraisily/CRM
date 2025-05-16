@@ -25,13 +25,13 @@ class AppraisalProcessor {
       
       const userId = userResult.rows[0].id;
       
-      // Record appraisal
-      await databaseService.query(
+      // Record appraisal - Allow DB to generate UUID instead of using sessionId
+      const appraisalResult = await databaseService.query(
         `INSERT INTO appraisals 
-         (id, user_id, session_id, image_url, status, result_summary) 
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+         (user_id, session_id, image_url, status, result_summary, completed_at) 
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id`,
         [
-          data.appraisal.sessionId,
           userId,
           data.appraisal.sessionId,
           data.appraisal.images.finalDescription,
@@ -44,9 +44,12 @@ class AppraisalProcessor {
             value: data.appraisal.value,
             documents: data.appraisal.documents,
             publishing: data.appraisal.publishing
-          }
+          },
+          data.appraisal.status === 'completed' ? new Date() : null
         ]
       );
+      
+      const appraisalId = appraisalResult.rows[0].id;
 
       // Record purchase if status is completed
       if (data.appraisal.status === 'completed') {
@@ -76,6 +79,7 @@ class AppraisalProcessor {
           data.appraisal.status,
           {
             sessionId: data.appraisal.sessionId,
+            appraisalId: appraisalId,
             serviceType: data.appraisal.serviceType,
             requestDate: data.appraisal.requestDate,
             value: data.appraisal.value,
@@ -89,6 +93,7 @@ class AppraisalProcessor {
       return {
         success: true,
         sessionId: data.appraisal.sessionId,
+        appraisalId: appraisalId,
         userId
       };
 

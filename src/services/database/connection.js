@@ -1,57 +1,55 @@
 const { Pool } = require('pg');
 const Logger = require('../../utils/logger');
-const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
-
-const PROJECT_ID = 'civil-forge-403609';
 
 class DatabaseConnection {
   constructor() {
     this.pool = null;
     this.logger = new Logger('Database Connection');
-    this.secretClient = new SecretManagerServiceClient();
   }
 
   async initialize() {
     try {
-      this.logger.info('Initializing database connection');
+      this.logger.info('Initializing database connection using Cloud Run runtime variables');
       
-      // Get database password from Secret Manager
-      this.logger.info('Retrieving database password from Secret Manager');
-      const name = `projects/${PROJECT_ID}/secrets/DB_PASSWORD/versions/latest`;
-      const [version] = await this.secretClient.accessSecretVersion({ name });
-      const dbPassword = version.payload.data.toString('utf8');
-
-      // Get database connection details from environment
-      const instanceUnixSocket = process.env.DB_SOCKET_PATH || '/cloudsql';
-      const instanceConnectionName = process.env.INSTANCE_CONNECTION_NAME;
+      // Get database connection details directly from Cloud Run runtime variables
+      const instanceConnectionName = process.env.DB_CRM_INSTANCE_CONNECTION_NAME;
+      const databaseName = process.env.DB_CRM_NAME;
+      const databasePassword = process.env.DB_CRM_PASSWORD;
       
+      // Validate required environment variables
       if (!instanceConnectionName) {
-        throw new Error('INSTANCE_CONNECTION_NAME environment variable is required');
+        throw new Error('DB_CRM_INSTANCE_CONNECTION_NAME environment variable is required');
       }
+      
+      if (!databaseName) {
+        throw new Error('DB_CRM_NAME environment variable is required');
+      }
+      
+      if (!databasePassword) {
+        throw new Error('DB_CRM_PASSWORD environment variable is required');
+      }
+      
+      this.logger.info('Using database configuration from runtime variables', {
+        instanceConnectionName,
+        databaseName,
+        passwordProvided: !!databasePassword
+      });
 
-      // Configure connection pool
+      // Configure connection pool with Cloud Run variables
       const config = {
-        user: process.env.DB_USER || 'postgres',
-        password: dbPassword,
-        database: process.env.DB_NAME || 'appraisily_activity_db',
+        user: 'postgres', // Fixed postgres user
+        password: databasePassword,
+        database: databaseName,
+        host: `/cloudsql/${instanceConnectionName}`,
+        ssl: false,
         max: 10,
         idleTimeoutMillis: 10000,
         connectionTimeoutMillis: 5000
       };
 
-      // Add Unix socket configuration if running in Cloud Run
-      if (instanceConnectionName) {
-        config.host = `${instanceUnixSocket}/${instanceConnectionName}`;
-        config.ssl = false;
-        this.logger.info('Using Unix socket connection');
-      } else {
-        config.ssl = process.env.NODE_ENV === 'production';
-        this.logger.info('Using TCP connection');
-      }
-
       // Configure connection pool
       this.pool = new Pool(config);
-      this.logger.info('Database pool configured');
+      this.logger.info('Database pool configured with Cloud Run variables');
 
       // Add error handler to the pool
       this.pool.on('error', (err, client) => {

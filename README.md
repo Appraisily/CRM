@@ -14,6 +14,7 @@ A Node.js Express backend service that manages customer relationships, processes
 - [Development](#development)
 - [Deployment](#deployment)
 - [Error Handling](#error-handling)
+- [Database Management](#database-management)
 
 ## Architecture Overview
 
@@ -221,3 +222,43 @@ The service implements comprehensive error handling:
 - Database connection pool management
 - Automatic PubSub subscription cleanup
 - Service health monitoring endpoint
+
+## Database Management
+
+This project uses a manually-managed database approach with Google Cloud SQL:
+
+### Database Connection
+
+```bash
+# Connect via gcloud CLI
+gcloud sql connect appraisily-db --user=postgres
+
+# Alternative using psql directly
+PGPASSWORD=your_password psql -h 34.59.77.160 -p 5432 -U postgres
+```
+
+### Database Schema
+
+The full database schema is documented in:
+- `database_schema.md` in the project root
+- `supabase/migrations/database_schema.md` (copy for reference)
+
+### Making Schema Changes
+
+All database changes should be performed manually:
+
+1. Connect to the database using the command above
+2. Apply changes directly or through SQL scripts
+3. Document all changes in both schema documentation files
+4. Update the corresponding migration files in `supabase/migrations/` for reference
+
+### Important Notes
+
+- **Do NOT run migrations automatically**: The application is configured to skip automatic migrations
+- **Document all changes**: Keep the schema documentation up to date
+- **Test carefully**: Always test changes in a development environment first
+- **Coordinate deployments**: Time database changes with application deployments
+
+If the database is missing tables on application startup, refer to:
+- `supabase/migrations/DO_NOT_RUN.md` for guidance
+- The SQL scripts in the migrations folder for reference implementations

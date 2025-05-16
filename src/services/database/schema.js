@@ -39,17 +39,19 @@ class SchemaManager {
         'bulk_appraisal_items'
       ];
 
-      // Find missing tables
+      // Check if any expected tables are missing
       const missingTables = expectedTables.filter(table => !existingTables.includes(table));
 
       if (missingTables.length > 0) {
-        this.logger.info('Applying schema for missing tables:', {
-          missing: missingTables
+        this.logger.warn('Some expected tables are missing:', {
+          missing: missingTables,
+          message: 'Tables must be created manually. See documentation.'
         });
-
-        await this.applySchema();
+        
+        // Log instead of applying schema automatically
+        this.logger.info('DATABASE MIGRATION NOTICE: Schema changes must be applied manually. Please refer to the README.md and supabase/migrations/DO_NOT_RUN.md files for database management instructions.');
       } else {
-        this.logger.info('All required tables exist');
+        this.logger.success('All required tables exist');
       }
 
       return true;
@@ -59,18 +61,12 @@ class SchemaManager {
     }
   }
 
+  // This method is kept for reference but will no longer be used
   async applySchema() {
-    try {
-      const schemaPath = path.join(__dirname, 'sql', 'schema.sql');
-      const schema = fs.readFileSync(schemaPath, 'utf8');
-
-      await this.pool.query(schema);
-      this.logger.success('Schema applied successfully');
-      return true;
-    } catch (error) {
-      this.logger.error('Failed to apply schema', error);
-      throw error;
-    }
+    this.logger.warn('AUTOMATIC SCHEMA APPLICATION IS DISABLED');
+    this.logger.info('Please connect to the database manually and apply any necessary changes');
+    this.logger.info('See README.md and supabase/migrations/DO_NOT_RUN.md for instructions');
+    return false;
   }
 }
 
