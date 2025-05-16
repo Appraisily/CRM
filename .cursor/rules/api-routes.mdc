@@ -1,0 +1,34 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# API Routes
+
+The CRM application exposes several RESTful API endpoints:
+
+## Customer Routes
+
+[src/routes/customers.js](mdc:src/routes/customers.js) provides endpoints for:
+- Customer registration and profile management
+- Appraisal requests and results
+- Customer activity tracking
+
+## Email Routes
+
+[src/routes/email.js](mdc:src/routes/email.js) provides endpoints for:
+- Sending email reports
+- Email template management
+- Email tracking and analytics
+
+## Authentication and Middleware
+
+- Middleware functions in [src/middleware](mdc:src/middleware) handle:
+  - CORS configuration
+  - Request validation
+  - Authentication and authorization
+  - Rate limiting
+
+## API Structure
+
+All routes follow RESTful principles and include proper error handling. The routes are registered in [index.js](mdc:index.js) as part of the Express application setup.

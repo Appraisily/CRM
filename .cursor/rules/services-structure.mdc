@@ -1,0 +1,27 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Services Structure
+
+The application is organized into multiple service modules:
+
+## Core Services
+
+- **Database Service**: [src/services/database](mdc:src/services/database) - Database connection and operations
+- **Storage Service**: [src/services/storage.js](mdc:src/services/storage.js) - Google Cloud Storage operations
+- **Email Service**: [src/services/email](mdc:src/services/email) - SendGrid integration for communications
+- **Encryption Service**: [src/services/encryption.js](mdc:src/services/encryption.js) - Data security and encryption
+- **OpenAI Service**: [src/services/openai.js](mdc:src/services/openai.js) - AI integration for appraisals
+- **PubSub Service**: [src/services/pubsub](mdc:src/services/pubsub) - Messaging and event handling
+- **Sheets Service**: [src/services/sheets](mdc:src/services/sheets) - Google Sheets integration
+- **Report Composer**: [src/services/reportComposer.js](mdc:src/services/reportComposer.js) - Generates appraisal reports
+
+## Message Handling
+
+- **Message Handler**: [src/services/message/handler.js](mdc:src/services/message/handler.js) - Processes incoming messages
+
+## Initialization
+
+All services are initialized in [index.js](mdc:index.js), which loads necessary credentials and configures each service before starting the application.

@@ -65,6 +65,22 @@ class BaseSheetService {
       'Client network socket disconnected'
     ];
 
+    const nonRetryableErrors = [
+      'Unable to parse range',
+      'invalid_grant',
+      'invalid_request',
+      'Sheet not found',
+      'Permission denied'
+    ];
+
+    // If the error matches any non-retryable pattern, return false immediately
+    if (nonRetryableErrors.some(msg => 
+      error.message?.toLowerCase().includes(msg.toLowerCase())
+    )) {
+      this.logger.error('Non-retryable error encountered:', {error: error.message});
+      return false;
+    }
+
     return retryableErrors.some(msg => 
       error.message?.toLowerCase().includes(msg.toLowerCase())
     );

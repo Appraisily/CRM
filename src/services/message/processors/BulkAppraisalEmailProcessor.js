@@ -106,10 +106,13 @@ class BulkAppraisalEmailProcessor {
         result.sheetSuccess = true;
         this.logger.success('Sheet logging completed successfully');
       } catch (sheetError) {
-        this.logger.error('Sheet logging failed:', {
-          error: sheetError.message,
+        this.logger.error('Sheet logging failed:', sheetError);
+        // Don't retry sheet operations - we'll consider this a non-critical error
+        // The recovery email can help the user re-engage later
+        result.sheetError = {
+          message: sheetError.message,
           stack: sheetError.stack
-        });
+        };
       }
 
       // Send recovery email independently

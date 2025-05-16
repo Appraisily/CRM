@@ -1,0 +1,28 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Project Overview
+
+This is a CRM system focused on appraisals and customer management with integrations to various Google Cloud services.
+
+## Main Components
+
+- **Entry Point**: [index.js](mdc:index.js) - Initializes all services and sets up Express routes
+- **Database Schema**: [prisma/schema.prisma](mdc:prisma/schema.prisma) - Defines all data models and relationships
+- **API Routes**: 
+  - [src/routes/customers.js](mdc:src/routes/customers.js) - Customer management endpoints
+  - [src/routes/email.js](mdc:src/routes/email.js) - Email interaction endpoints
+
+## Key Services
+
+- **Database**: PostgreSQL via Prisma ORM
+- **Storage**: Google Cloud Storage for image uploads
+- **Email**: SendGrid integration for customer communications
+- **AI**: OpenAI integration for appraisals and processing
+- **Messaging**: Google PubSub for event handling
+
+## Architecture
+
+The application follows a modular architecture with separate services for different functionalities. The main service initializes all other services and sets up API routes.

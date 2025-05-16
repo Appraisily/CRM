@@ -1,0 +1,30 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Deployment
+
+This CRM application is deployed using Google Cloud Run with secrets managed through Google Secret Manager.
+
+## Deployment Files
+
+- **Dockerfile**: [Dockerfile](mdc:Dockerfile) - Container definition for Cloud Run deployment
+- **Package Configuration**: [package.json](mdc:package.json) - Node.js dependencies and scripts
+
+## Environment Setup
+
+- Secrets are managed via Google Secret Manager rather than environment files
+- Runtime variables are configured in Cloud Run service settings
+- The application is configured to use Unix sockets for database connections
+
+## Initialization Process
+
+1. The application loads secrets from Secret Manager at startup
+2. Services are initialized with the loaded credentials
+3. Express server starts and listens on the configured port
+4. PubSub subscription is established for async message processing
+
+## Shutdown Process
+
+The application implements graceful shutdown handling for SIGTERM and SIGINT signals, properly closing database connections and PubSub subscriptions.

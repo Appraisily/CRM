@@ -1,0 +1,36 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Configuration
+
+The CRM application uses Google Secret Manager for configuration instead of environment files.
+
+## Secrets Management
+
+- **Secret Loading**: [src/config/secrets.js](mdc:src/config/secrets.js) - Loads credentials from Google Secret Manager
+- All secrets are loaded at application startup in [index.js](mdc:index.js)
+
+## Required Secrets
+
+The application requires these secrets to be configured in Google Secret Manager:
+
+- **GOOGLE_CLOUD_PROJECT_ID**: GCP project ID
+- **GCS_BUCKET_NAME**: Google Cloud Storage bucket for file storage
+- **OPENAI_API_KEY**: API key for OpenAI services
+- **SENDGRID_API_KEY**: API key for SendGrid email service
+- **SENDGRID_EMAIL**: From email address for SendGrid
+- **SEND_GRID_TEMPLATE_FREE_REPORT**: Template ID for free reports
+- **SEND_GRID_TEMPLATE_PERSONAL_OFFER**: Template ID for personal offers
+- **DIRECT_API_KEY**: API key for direct service access
+- **EMAIL_ENCRYPTION_KEY**: Key for encrypting email data
+- **SHEETS_ID_FREE_REPORTS_LOG**: Google Sheets ID for reporting
+
+## Runtime Variables
+
+These are configured in Cloud Run:
+
+- **PORT**: Server port (defaults to 8080)
+- **PUBSUB_SUBSCRIPTION_NAME**: Name of the PubSub subscription for message handling
+- **DATABASE_INSTANCE_UNIX_SOCKET**: Database connection string

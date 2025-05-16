@@ -66,14 +66,6 @@ class PubSubService {
         }
       });
 
-      this.subscription.on('message', async (message) => {
-        try {
-          await this._handleMessage(message);
-        } catch (error) {
-          this.logger.error('Error handling message', error);
-        }
-      });
-
       this.subscription.on('error', (error) => {
         this.logger.error('Subscription error', error);
         // Don't throw, just log the error to prevent crash

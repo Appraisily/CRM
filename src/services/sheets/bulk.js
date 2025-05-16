@@ -3,7 +3,7 @@ const BaseSheetService = require('./base');
 class BulkAppraisalSheetService extends BaseSheetService {
   constructor() {
     super();
-    this.bulkAppraisalsSheet = "'Bulk Appraisals'";
+    this.bulkAppraisalsSheet = "Bulk Appraisals";
   }
 
   async logBulkAppraisalEmail(sessionId, email, timestamp) {
@@ -15,7 +15,7 @@ class BulkAppraisalSheetService extends BaseSheetService {
       const response = await this.retryOperation(() =>
         this.sheets.spreadsheets.values.get({
           spreadsheetId: this.sheetsId,
-          range: `${this.bulkAppraisalsSheet}!A:A`
+          range: `'${this.bulkAppraisalsSheet}'!A:A`
         })
       );
       
@@ -24,7 +24,7 @@ class BulkAppraisalSheetService extends BaseSheetService {
       await this.retryOperation(() =>
         this.sheets.spreadsheets.values.update({
           spreadsheetId: this.sheetsId,
-          range: `${this.bulkAppraisalsSheet}!A${nextRow}:D${nextRow}`,
+          range: `'${this.bulkAppraisalsSheet}'!A${nextRow}:D${nextRow}`,
           valueInputOption: 'USER_ENTERED',
           requestBody: {
             values: [[

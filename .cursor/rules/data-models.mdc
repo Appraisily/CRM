@@ -1,0 +1,34 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Data Models
+
+The CRM system uses Prisma ORM with PostgreSQL. Key data models include:
+
+## User Model
+[prisma/schema.prisma](mdc:prisma/schema.prisma) defines the following models:
+
+- **User**: Core user information
+- **UserActivity**: Tracks user interactions (chat, email, purchases)
+- **ChatSession**: Customer support and sales interactions
+- **Purchase**: Service purchases and payment information
+- **Appraisal**: Product appraisal requests and results
+- **EmailInteraction**: Email communications with customers
+
+## Relationships
+
+- Users have many Activities, ChatSessions, Purchases, Appraisals, and EmailInteractions
+- All related models reference back to User with a foreign key
+
+## Enums
+
+- ActivityType: Types of user activities (chat, email, purchase, etc.)
+- ActivityStatus: Status tracking for activities
+- ChatStatus: Status of chat sessions
+- PurchaseStatus: Status of customer purchases
+- ServiceType: Types of services offered
+- AppraisalStatus: Status of appraisal requests
+- EmailType: Types of emails sent
+- EmailStatus: Tracking status of sent emails
