@@ -60,6 +60,14 @@ class SendGridService {
     });
 
     try {
+      // Create the recovery link with the session ID
+      const recoveryLink = `https://appraisily.com/bulk-appraisal/upload?session_id=${sessionId}`;
+      
+      this.logger.info('Generating recovery link for email', { 
+        recoveryLink,
+        sessionId
+      });
+
       const msg = {
         to: toEmail,
         from: this.fromEmail,
@@ -67,11 +75,17 @@ class SendGridService {
         dynamicTemplateData: {
           subject: 'Your Bulk Appraisal Submission Details',
           session_id: sessionId,
-          year: new Date().getFullYear()
+          customer_name: toEmail.split('@')[0], // Basic personalization using email username
+          recovery_link: recoveryLink, // Add the recovery link for the template
+          current_year: new Date().getFullYear()
         }
       };
 
       await sgMail.send(msg);
+      this.logger.success('Bulk appraisal recovery email sent successfully', {
+        to: toEmail,
+        recoveryLink
+      });
       return true;
     } catch (error) {
       this.logger.error('SendGrid error sending bulk appraisal recovery email', {
@@ -83,6 +97,7 @@ class SendGridService {
       throw error;
     }
   }
+
   async sendPersonalOffer(toEmail, subject, content, scheduledTime = null) {
     if (!this.initialized) {
       throw new InitializationError('SendGrid service not initialized');
@@ -190,7 +205,7 @@ class SendGridService {
         templateId: templateId,
         dynamicTemplateData: {
           subject: 'Welcome to Appraisily',
-          year: new Date().getFullYear()
+          current_year: new Date().getFullYear()
         }
       };
 
@@ -233,7 +248,7 @@ class SendGridService {
         dynamicTemplateData: {
           subject: 'Reset Your Password',
           token: token,
-          year: new Date().getFullYear()
+          current_year: new Date().getFullYear()
         }
       };
 

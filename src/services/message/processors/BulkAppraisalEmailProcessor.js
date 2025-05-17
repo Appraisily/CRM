@@ -24,6 +24,7 @@ class BulkAppraisalEmailProcessor {
         sheetSuccess: false,
         emailSuccess: false,
         userId: null,
+        bulkAppraisalId: null,
         sessionId: data.metadata.sessionId,
         timestamp: data.metadata.timestamp
       };
@@ -44,22 +45,26 @@ class BulkAppraisalEmailProcessor {
         this.logger.info('User record created/updated', { userId });
         result.userId = userId;
 
-        // Create initial bulk appraisal record
+        // Create initial bulk appraisal record - let DB generate UUID
         this.logger.info('Creating bulk appraisal record...');
-        await databaseService.query(
+        const bulkAppraisalResult = await databaseService.query(
           `INSERT INTO bulk_appraisals 
            (user_id, session_id, appraisal_type, status, total_price, final_price) 
-           VALUES ($1, $2, $3, $4, $5, $6)`,
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING id`,
           [
             userId,
             data.metadata.sessionId,
             'regular', // Default type, will be updated during finalization
             'draft',
-            0, // Initial price, will be updated during finalization
-            0  // Initial final price, will be updated during finalization
+            0.00, // Initial price, will be updated during finalization
+            0.00  // Initial final price, will be updated during finalization
           ]
         );
-        this.logger.info('Bulk appraisal record created');
+        
+        const bulkAppraisalId = bulkAppraisalResult.rows[0].id;
+        result.bulkAppraisalId = bulkAppraisalId;
+        this.logger.info('Bulk appraisal record created', { bulkAppraisalId });
 
         // Record activity
         this.logger.info('Recording user activity...');
@@ -69,10 +74,11 @@ class BulkAppraisalEmailProcessor {
            VALUES ($1, $2, $3, $4)`,
           [
             userId,
-            'appraisal',
+            'appraisal', // Using existing activity_type enum value
             'started',
             {
-              type: 'bulk',
+              type: 'bulk_appraisal',
+              bulkAppraisalId: bulkAppraisalId,
               sessionId: data.metadata.sessionId,
               origin: data.metadata.origin,
               environment: data.metadata.environment,
