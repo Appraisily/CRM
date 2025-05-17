@@ -25,19 +25,55 @@ class GmailProcessor {
       
       const userId = userResult.rows[0].id;
       
+      // Determine the appropriate email status based on our enum values
+      // Valid values in schema: 'sent', 'delivered', 'opened', 'clicked', 'replied'
+      // For incoming emails, 'replied' is most appropriate
+      const emailStatus = 'replied';
+      
+      // Determine email type more precisely if possible
+      // Valid values: 'inquiry', 'support', 'report', 'offer'
+      let emailType = 'inquiry'; // Default
+      
+      // Simple classification based on subject keywords
+      const subjectLower = data.email.subject.toLowerCase();
+      if (subjectLower.includes('help') || subjectLower.includes('support') || subjectLower.includes('assistance')) {
+        emailType = 'support';
+      } else if (subjectLower.includes('report') || subjectLower.includes('issue')) {
+        emailType = 'report';
+      } else if (subjectLower.includes('offer') || subjectLower.includes('quote') || subjectLower.includes('price')) {
+        emailType = 'offer';
+      }
+      
       // Record email interaction
-      await databaseService.query(
+      const emailResult = await databaseService.query(
         `INSERT INTO email_interactions 
          (user_id, type, subject, content, status) 
-         VALUES ($1, $2, $3, $4, $5)`,
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
         [
           userId,
-          'inquiry',
+          emailType,
           data.email.subject,
           data.email.content,
-          'received'
+          emailStatus
         ]
       );
+      
+      const emailInteractionId = emailResult.rows[0].id;
+
+      // Prepare rich metadata for better tracking
+      const metadata = {
+        messageId: data.email.messageId,
+        threadId: data.email.threadId,
+        emailInteractionId: emailInteractionId,
+        classification: data.email.classification || null,
+        attachments: data.email.attachments || [],
+        response: data.email.response || null,
+        labels: data.metadata.labels || [],
+        processingTime: data.metadata.processingTime,
+        timestamp: data.metadata.timestamp,
+        source: 'gmail'
+      };
 
       // Record activity
       await databaseService.query(
@@ -48,16 +84,7 @@ class GmailProcessor {
           userId,
           'email',
           'completed',
-          {
-            messageId: data.email.messageId,
-            threadId: data.email.threadId,
-            classification: data.email.classification,
-            attachments: data.email.attachments,
-            response: data.email.response,
-            labels: data.metadata.labels,
-            processingTime: data.metadata.processingTime,
-            timestamp: data.metadata.timestamp
-          }
+          metadata
         ]
       );
 
@@ -65,7 +92,8 @@ class GmailProcessor {
       return {
         success: true,
         messageId: data.email.messageId,
-        userId
+        userId,
+        emailInteractionId
       };
 
     } catch (error) {
