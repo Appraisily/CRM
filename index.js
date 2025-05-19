@@ -2,6 +2,7 @@ const express = require('express');
 const { loadSecrets } = require('./src/config/secrets');
 const corsMiddleware = require('./src/middleware/cors');
 const customerRoutes = require('./src/routes/customers');
+const apiDocsRoutes = require('./src/routes/api-docs');
 const cloudServices = require('./src/services/storage');
 const emailService = require('./src/services/email');
 const sheetsService = require('./src/services/sheets');
@@ -23,6 +24,7 @@ app.use(corsMiddleware);
 
 // API Routes
 app.use('/api/customers', customerRoutes);
+app.use('/api/docs', apiDocsRoutes); // API documentation routes (no auth required)
 
 // Health check endpoint
 app.get('/health', (req, res) => {
