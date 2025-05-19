@@ -7,6 +7,7 @@ const BulkAppraisalEmailProcessor = require('./BulkAppraisalEmailProcessor');
 const BulkAppraisalFinalizationProcessor = require('./BulkAppraisalFinalizationProcessor');
 const NewRegistrationEmailProcessor = require('./NewRegistrationEmailProcessor');
 const ResetPasswordRequestProcessor = require('./ResetPasswordRequestProcessor');
+const AppraisalReadyNotificationProcessor = require('./AppraisalReadyNotificationProcessor');
 const { ValidationError } = require('../../../utils/errors');
 
 class ProcessorFactory {
@@ -20,7 +21,8 @@ class ProcessorFactory {
       bulkAppraisalEmailUpdate: new BulkAppraisalEmailProcessor(), 
       bulkAppraisalFinalized: new BulkAppraisalFinalizationProcessor(),
       newRegistrationEmail: new NewRegistrationEmailProcessor(),
-      resetPasswordRequest: new ResetPasswordRequestProcessor()
+      resetPasswordRequest: new ResetPasswordRequestProcessor(),
+      appraisalReadyNotification: new AppraisalReadyNotificationProcessor()
     };
   }
 
