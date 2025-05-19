@@ -31,34 +31,47 @@ class AppraisalReadyNotificationProcessor {
         throw new Error('WordPress link is required');
       }
 
-      // Create or get user
-      const userResult = await databaseService.query(
-        `INSERT INTO users (email) 
-         VALUES ($1)
-         ON CONFLICT (email) DO UPDATE 
-         SET last_activity = NOW()
-         RETURNING id`,
-        [data.customer.email]
-      );
-      
-      const userId = userResult.rows[0].id;
-      this.logger.info('User record created/updated', { userId });
+      // Flags & placeholders
+      let userId = null;
+      let appraisalId = null;
+      let emailInteractionId = null;
+      let dbSuccess = false;
 
-      // Update appraisal status to completed if it exists in our database
-      const appraisalUpdateResult = await databaseService.query(
-        `UPDATE appraisals 
-         SET status = 'completed', completed_at = NOW()
-         WHERE session_id = $1
-         RETURNING id`,
-        [data.metadata.sessionId]
-      );
+      /* --------------------------------------------------
+       * Database operations (non-critical)
+       * -------------------------------------------------- */
+      try {
+        // Create or get user
+        const userResult = await databaseService.query(
+          `INSERT INTO users (email) 
+           VALUES ($1)
+           ON CONFLICT (email) DO UPDATE 
+           SET last_activity = NOW()
+           RETURNING id`,
+          [data.customer.email]
+        );
+        userId = userResult.rows[0].id;
+        this.logger.info('User record created/updated', { userId });
 
-      // Get appraisal ID if available
-      const appraisalId = appraisalUpdateResult.rows.length > 0 
-        ? appraisalUpdateResult.rows[0].id 
-        : null;
+        // Update appraisal status
+        const appraisalUpdateResult = await databaseService.query(
+          `UPDATE appraisals 
+           SET status = 'completed', completed_at = NOW()
+           WHERE session_id = $1
+           RETURNING id`,
+          [data.metadata.sessionId]
+        );
+        appraisalId = appraisalUpdateResult.rows.length > 0 ? appraisalUpdateResult.rows[0].id : null;
 
-      // Prepare template data
+        dbSuccess = true;
+        this.logger.success('Database operations completed');
+      } catch (dbError) {
+        this.logger.error('Database operations failed – continuing without DB', dbError);
+      }
+
+      /* --------------------------------------------------
+       * Email operation (critical)
+       * -------------------------------------------------- */
       const templateData = {
         customer_name: data.customer.name || 'Customer',
         pdf_link: data.pdf_link,
@@ -66,7 +79,6 @@ class AppraisalReadyNotificationProcessor {
         current_year: new Date().getFullYear().toString()
       };
 
-      // Send notification email using the template
       const emailResult = await emailService.sendTemplatedEmail({
         to: data.customer.email,
         templateId: process.env.SEND_GRID_TEMPLATE_NOTIFY_APPRAISAL_COMPLETED,
@@ -77,50 +89,56 @@ class AppraisalReadyNotificationProcessor {
           timestamp: data.metadata?.timestamp || new Date().toISOString()
         }
       });
+      this.logger.success('Notification email sent', { messageId: emailResult.messageId });
 
-      this.logger.info('Notification email sent', { messageId: emailResult.messageId });
+      /* --------------------------------------------------
+       * Optional logging of email interaction & activity
+       * -------------------------------------------------- */
+      if (userId) {
+        try {
+          const emailInteractionResult = await databaseService.query(
+            `INSERT INTO email_interactions 
+             (user_id, type, subject, content, status) 
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING id`,
+            [
+              userId,
+              'report',
+              'Your Appraisal Report is Ready',
+              JSON.stringify(templateData),
+              'sent'
+            ]
+          );
+          emailInteractionId = emailInteractionResult.rows[0].id;
 
-      // Record email interaction
-      const emailInteractionResult = await databaseService.query(
-        `INSERT INTO email_interactions 
-         (user_id, type, subject, content, status) 
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id`,
-        [
-          userId,
-          'report',
-          'Your Appraisal Report is Ready',
-          JSON.stringify(templateData), // Store template data as content
-          'sent'
-        ]
-      );
-      
-      const emailInteractionId = emailInteractionResult.rows[0].id;
+          await databaseService.query(
+            `INSERT INTO user_activities 
+             (user_id, activity_type, status, metadata) 
+             VALUES ($1, $2, $3, $4)`,
+            [
+              userId,
+              'appraisal',
+              'completed',
+              {
+                emailInteractionId,
+                appraisalId,
+                sessionId: data.metadata.sessionId,
+                notificationType: 'report_ready',
+                timestamp: data.metadata?.timestamp || new Date().toISOString(),
+                origin: data.origin || 'system'
+              }
+            ]
+          );
+          this.logger.success('Post-email DB logging completed');
+        } catch (postDbError) {
+          this.logger.error('Post-email DB logging failed – ignoring', postDbError);
+        }
+      }
 
-      // Record user activity
-      await databaseService.query(
-        `INSERT INTO user_activities 
-         (user_id, activity_type, status, metadata) 
-         VALUES ($1, $2, $3, $4)`,
-        [
-          userId,
-          'appraisal', 
-          'completed',
-          {
-            emailInteractionId,
-            appraisalId, // May be null if not found
-            sessionId: data.metadata.sessionId,
-            notificationType: 'report_ready',
-            timestamp: data.metadata?.timestamp || new Date().toISOString(),
-            origin: data.origin || 'system'
-          }
-        ]
-      );
-
-      this.logger.success('Appraisal ready notification processed successfully');
-      
+      this.logger.success('Appraisal ready notification process finished');
       return {
         success: true,
+        dbSuccess,
         userId,
         appraisalId,
         emailInteractionId,
@@ -129,7 +147,7 @@ class AppraisalReadyNotificationProcessor {
       };
 
     } catch (error) {
-      this.logger.error('Failed to process appraisal ready notification', error);
+      this.logger.error('Failed to fully process appraisal ready notification', error);
       return {
         success: false,
         error: error.message,
