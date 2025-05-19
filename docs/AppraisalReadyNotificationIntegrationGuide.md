@@ -16,6 +16,35 @@ When an appraisal report is completed and ready for a customer, your service nee
 - Google Cloud SDK installed (for local testing)
 - Service account credentials with Pub/Sub publish permissions
 
+## Message Schema
+
+The CRM system follows a standard message schema structure for all processors. For the Appraisal Ready Notification, your message must adhere to the following format:
+
+```json
+{
+  "crmProcess": "appraisalReadyNotification",  // Required - MUST be exactly this value
+  "customer": {                                // Required object
+    "email": "customer@example.com",           // Required
+    "name": "John Doe"                         // Optional, defaults to 'Customer'
+  },
+  "metadata": {                                // Required object
+    "origin": "appraisal-service",             // Required - Identifies the sending system
+    "sessionId": "sess_67890",                 // Required - The appraisal session ID
+    "environment": "production",               // Required - "production", "development", etc.
+    "timestamp": 1686839700000                 // Required - Milliseconds since epoch (numeric)
+  },
+  "pdf_link": "https://example.com/appraisals/report.pdf",  // Required for this processor
+  "wp_link": "https://example.com/appraisals/vintage-watch"  // Required for this processor
+}
+```
+
+### Critical Schema Notes
+
+1. The `crmProcess` field **MUST** be exactly "appraisalReadyNotification" (case-sensitive)
+2. All messages must include `customer` and `metadata` objects with their required fields
+3. The `metadata.timestamp` must be a number (milliseconds since epoch), not a string
+4. Both `pdf_link` and `wp_link` are required fields specific to this processor
+
 ## Implementation Steps
 
 ### 1. Install Required Dependencies
@@ -79,23 +108,30 @@ topic_path = publisher.topic_path(
 ```javascript
 async function sendAppraisalReadyNotification(data) {
   try {
-    // Prepare message data structure
+    const now = Date.now(); // Current timestamp in milliseconds
+    
+    // Prepare message data structure following the required schema
     const messageData = {
-      // CRITICAL: Process type identifies which processor to use
-      processType: 'appraisalReadyNotification',
+      crmProcess: 'appraisalReadyNotification',  // Required process identifier
       
       customer: {
-        email: data.customerEmail,
-        name: data.customerName || 'Customer'
+        email: data.customerEmail,  // Required
+        name: data.customerName || 'Customer'  // Optional
       },
-      sessionId: data.sessionId,
+      
+      metadata: {
+        origin: 'appraisal-service',  // Identifies your system
+        sessionId: data.sessionId,  // Required
+        environment: process.env.NODE_ENV || 'production',  // Required
+        timestamp: now  // MUST be a number (milliseconds)
+      },
+      
+      // Processor-specific required fields
       pdf_link: data.pdfUrl,
-      wp_link: data.wordpressUrl,
-      timestamp: new Date().toISOString(),
-      origin: 'appraisal-service'
+      wp_link: data.wordpressUrl
     };
 
-    // Convert to base64 encoded string
+    // Convert to a buffer for publishing
     const messageBuffer = Buffer.from(JSON.stringify(messageData));
     
     // Publish the message
@@ -115,20 +151,27 @@ async function sendAppraisalReadyNotification(data) {
 ```python
 def send_appraisal_ready_notification(data):
     try:
-        # Prepare message data structure
+        now = int(time.time() * 1000)  # Current timestamp in milliseconds
+        
+        # Prepare message data structure following the required schema
         message_data = {
-            # CRITICAL: Process type identifies which processor to use
-            "processType": "appraisalReadyNotification",
+            "crmProcess": "appraisalReadyNotification",  # Required process identifier
             
             "customer": {
-                "email": data["customer_email"],
-                "name": data.get("customer_name", "Customer")
+                "email": data["customer_email"],  # Required
+                "name": data.get("customer_name", "Customer")  # Optional
             },
-            "sessionId": data["session_id"],
+            
+            "metadata": {
+                "origin": "appraisal-service",  # Identifies your system
+                "sessionId": data["session_id"],  # Required
+                "environment": os.environ.get("ENVIRONMENT", "production"),  # Required
+                "timestamp": now  # MUST be a number (milliseconds)
+            },
+            
+            # Processor-specific required fields
             "pdf_link": data["pdf_url"],
-            "wp_link": data["wordpress_url"],
-            "timestamp": datetime.datetime.now().isoformat(),
-            "origin": "appraisal-service"
+            "wp_link": data["wordpress_url"]
         }
         
         # Convert to JSON string and encode
@@ -207,33 +250,6 @@ def complete_appraisal(appraisal_id):
         return jsonify({"success": False, "error": str(e)}), 500
 ```
 
-## Message Structure
-
-The message must follow this JSON structure:
-
-```json
-{
-  "processType": "appraisalReadyNotification",  // Required - MUST be this exact value
-  "customer": {
-    "email": "customer@example.com",  // Required
-    "name": "John Doe"                // Optional, defaults to 'Customer'
-  },
-  "sessionId": "sess_67890",          // Required
-  "pdf_link": "https://example.com/appraisals/report.pdf",  // Required
-  "wp_link": "https://example.com/appraisals/vintage-watch", // Required
-  "timestamp": "2023-06-15T14:35:00.000Z",  // Optional
-  "origin": "appraisal-service"       // Optional
-}
-```
-
-### Required Fields
-
-- `processType`: **MUST** be set to "appraisalReadyNotification" to route to the correct processor
-- `customer.email`: The customer's email address
-- `sessionId`: The session ID of the appraisal
-- `pdf_link`: URL to the PDF version of the appraisal report
-- `wp_link`: URL to the WordPress page with the appraisal content
-
 ## Testing Your Implementation
 
 ### 1. Verify the Topic Exists
@@ -254,16 +270,19 @@ gcloud pubsub topics create crm-messages
 
 ```bash
 gcloud pubsub topics publish crm-messages --message='{
-  "processType": "appraisalReadyNotification",
+  "crmProcess": "appraisalReadyNotification",
   "customer": {
     "email": "test@example.com",
     "name": "Test User"
   },
-  "sessionId": "test_session_123",
+  "metadata": {
+    "origin": "manual-test",
+    "sessionId": "test_session_123",
+    "environment": "development",
+    "timestamp": '$(date +%s%N | cut -b1-13)'
+  },
   "pdf_link": "https://example.com/test-report.pdf",
-  "wp_link": "https://example.com/test-report",
-  "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")'",
-  "origin": "manual-test"
+  "wp_link": "https://example.com/test-report"
 }'
 ```
 
@@ -275,10 +294,11 @@ After sending a test message, check the logs in the CRM system to verify that th
 
 ### Common Issues
 
-1. **Permission Denied**: Ensure your service account has the `roles/pubsub.publisher` role.
-2. **Topic Not Found**: Verify the topic name is correct and exists in your GCP project.
-3. **Invalid Message Format**: Double-check that your message structure matches the required format.
-4. **Incorrect Process Type**: The `processType` field MUST be "appraisalReadyNotification" exactly.
+1. **Invalid Process Type**: The `crmProcess` field must be exactly "appraisalReadyNotification".
+2. **Missing Required Fields**: Make sure all required fields are included.
+3. **Timestamp Format**: Ensure the timestamp is a number (milliseconds), not a string.
+4. **Permission Denied**: Ensure your service account has the `roles/pubsub.publisher` role.
+5. **Topic Not Found**: Verify the topic name is correct and exists in your GCP project.
 
 ### Getting Help
 
