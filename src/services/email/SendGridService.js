@@ -317,6 +317,40 @@ class SendGridService {
       throw new ProcessingError(`Failed to send dynamic templated email (Template ID: ${templateId}): ${error.message}`);
     }
   }
+
+  /**
+   * Send an appraisal ready notification email
+   * 
+   * @param {string} toEmail - Customer email address
+   * @param {string} templateId - SendGrid template ID
+   * @param {object} templateData - Data for the template
+   * @param {object} metadata - Additional metadata
+   * @returns {Promise<object>} Send result
+   */
+  async sendAppraisalReadyNotification(toEmail, templateId, templateData, metadata = {}) {
+    try {
+      this.logger.info('Sending appraisal ready notification', {
+        to: toEmail,
+        metadata
+      });
+
+      // Use the dynamic template email function with template-specific data
+      return this.sendDynamicTemplateEmail(
+        toEmail,
+        templateId,
+        {
+          customer_name: templateData.customer_name || 'Customer',
+          pdf_link: templateData.pdf_link,
+          wp_link: templateData.wp_link,
+          current_year: templateData.current_year || new Date().getFullYear().toString()
+        },
+        metadata
+      );
+    } catch (error) {
+      this.logger.error('Failed to send appraisal ready notification', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new SendGridService();

@@ -197,6 +197,37 @@ class EmailService {
     // Ensure sendGridService is initialized and accessible, which it should be if EmailService is initialized.
     return sendGridService.sendDynamicTemplateEmail(toEmail, templateId, dynamicTemplateData, metadata);
   }
+
+  /**
+   * Send an appraisal ready notification email
+   * Uses SendGrid template to notify customers when their appraisal is ready
+   * 
+   * @param {object} params - Parameters for the email
+   * @returns {Promise<object>} Email send result
+   */
+  async sendAppraisalReadyNotification(params) {
+    if (!this.initialized) {
+      throw new InitializationError('Email service not initialized');
+    }
+
+    const { customer, pdf_link, wp_link, metadata } = params;
+    
+    // Prepare template data
+    const templateData = {
+      customer_name: customer.name || 'Customer',
+      pdf_link: pdf_link,
+      wp_link: wp_link,
+      current_year: new Date().getFullYear().toString()
+    };
+
+    // Send using SendGrid service
+    return sendGridService.sendAppraisalReadyNotification(
+      customer.email,
+      process.env.SEND_GRID_TEMPLATE_NOTIFY_APPRAISAL_COMPLETED,
+      templateData,
+      metadata
+    );
+  }
 }
 
 module.exports = new EmailService();
