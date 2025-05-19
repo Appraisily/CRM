@@ -10,8 +10,8 @@ class AppraisalReadyNotificationProcessor {
   async process(data) {
     try {
       this.logger.info('Processing appraisal ready notification', {
-        sessionId: data.sessionId,
-        timestamp: data.timestamp
+        sessionId: data.metadata?.sessionId,
+        timestamp: data.metadata?.timestamp
       });
 
       // Validate required data
@@ -19,7 +19,7 @@ class AppraisalReadyNotificationProcessor {
         throw new Error('Customer email is required');
       }
 
-      if (!data.sessionId) {
+      if (!data.metadata?.sessionId) {
         throw new Error('Session ID is required');
       }
 
@@ -50,7 +50,7 @@ class AppraisalReadyNotificationProcessor {
          SET status = 'completed', completed_at = NOW()
          WHERE session_id = $1
          RETURNING id`,
-        [data.sessionId]
+        [data.metadata.sessionId]
       );
 
       // Get appraisal ID if available
@@ -72,9 +72,9 @@ class AppraisalReadyNotificationProcessor {
         templateId: process.env.SEND_GRID_TEMPLATE_NOTIFY_APPRAISAL_COMPLETED,
         dynamicTemplateData: templateData,
         metadata: {
-          sessionId: data.sessionId,
+          sessionId: data.metadata.sessionId,
           origin: data.origin || 'system',
-          timestamp: data.timestamp || new Date().toISOString()
+          timestamp: data.metadata?.timestamp || new Date().toISOString()
         }
       });
 
@@ -109,9 +109,9 @@ class AppraisalReadyNotificationProcessor {
           {
             emailInteractionId,
             appraisalId, // May be null if not found
-            sessionId: data.sessionId,
+            sessionId: data.metadata.sessionId,
             notificationType: 'report_ready',
-            timestamp: data.timestamp || new Date().toISOString(),
+            timestamp: data.metadata?.timestamp || new Date().toISOString(),
             origin: data.origin || 'system'
           }
         ]
@@ -125,7 +125,7 @@ class AppraisalReadyNotificationProcessor {
         appraisalId,
         emailInteractionId,
         messageId: emailResult.messageId,
-        sessionId: data.sessionId
+        sessionId: data.metadata.sessionId
       };
 
     } catch (error) {
@@ -133,7 +133,7 @@ class AppraisalReadyNotificationProcessor {
       return {
         success: false,
         error: error.message,
-        sessionId: data.sessionId
+        sessionId: data.metadata.sessionId
       };
     }
   }
