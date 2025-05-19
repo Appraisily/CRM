@@ -72,7 +72,7 @@
 |--------|------|-------------|
 | id | uuid | PRIMARY KEY, DEFAULT gen_random_uuid() |
 | user_id | uuid | REFERENCES users(id) ON DELETE CASCADE |
-| session_id | uuid | NOT NULL |
+| session_id | text | NOT NULL |
 | image_url | text | NOT NULL |
 | status | appraisal_status | NOT NULL DEFAULT 'pending' |
 | result_summary | jsonb | DEFAULT '{}' |

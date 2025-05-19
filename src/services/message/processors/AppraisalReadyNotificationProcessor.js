@@ -79,16 +79,16 @@ class AppraisalReadyNotificationProcessor {
         current_year: new Date().getFullYear().toString()
       };
 
-      const emailResult = await emailService.sendTemplatedEmail({
-        to: data.customer.email,
-        templateId: process.env.SEND_GRID_TEMPLATE_NOTIFY_APPRAISAL_COMPLETED,
-        dynamicTemplateData: templateData,
-        metadata: {
+      const emailResult = await emailService.sendDynamicTemplateEmail(
+        data.customer.email,
+        process.env.SEND_GRID_TEMPLATE_NOTIFY_APPRAISAL_COMPLETED,
+        templateData,
+        {
           sessionId: data.metadata.sessionId,
           origin: data.origin || 'system',
           timestamp: data.metadata?.timestamp || new Date().toISOString()
         }
-      });
+      );
       this.logger.success('Notification email sent', { messageId: emailResult.messageId });
 
       /* --------------------------------------------------

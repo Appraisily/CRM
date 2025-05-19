@@ -189,6 +189,14 @@ class EmailService {
       };
     }
   }
+
+  async sendDynamicTemplateEmail(toEmail, templateId, dynamicTemplateData, metadata = {}) {
+    if (!this.initialized) {
+      throw new InitializationError('Email service not initialized');
+    }
+    // Ensure sendGridService is initialized and accessible, which it should be if EmailService is initialized.
+    return sendGridService.sendDynamicTemplateEmail(toEmail, templateId, dynamicTemplateData, metadata);
+  }
 }
 
 module.exports = new EmailService();

@@ -264,6 +264,59 @@ class SendGridService {
       throw error;
     }
   }
+
+  async sendDynamicTemplateEmail(toEmail, templateId, dynamicTemplateData, metadata = {}) {
+    if (!this.initialized) {
+      throw new InitializationError('SendGrid service not initialized');
+    }
+
+    if (!templateId) {
+      throw new Error('Template ID is required for sending a dynamic templated email.');
+    }
+
+    this.logger.info('Sending dynamic templated email', {
+      to: toEmail,
+      templateId,
+      hasDynamicData: !!dynamicTemplateData,
+      metadata
+    });
+
+    try {
+      const msg = {
+        to: toEmail,
+        from: this.fromEmail,
+        templateId: templateId,
+        dynamicTemplateData: dynamicTemplateData,
+        // You might want to add customArgs or other SendGrid features here if needed
+        // customArgs: metadata  // Example: if you want to pass metadata for tracking
+      };
+
+      if (metadata && Object.keys(metadata).length > 0) {
+        msg.customArgs = metadata; // Pass metadata as custom arguments if provided
+      }
+
+      const [response] = await sgMail.send(msg);
+      this.logger.success('Dynamic templated email sent successfully', {
+        to: toEmail,
+        templateId,
+        messageId: response?.[0]?.headers?.['x-message-id'] // sgMail.send(msg) returns [response, body] for single email
+      });
+      return { 
+        success: true, 
+        messageId: response?.[0]?.headers?.['x-message-id'] 
+      };
+    } catch (error) {
+      this.logger.error('SendGrid error sending dynamic templated email', {
+        error: error.message,
+        response: error.response?.body,
+        code: error.code,
+        statusCode: error.statusCode,
+        templateId,
+        metadata
+      });
+      throw new ProcessingError(`Failed to send dynamic templated email (Template ID: ${templateId}): ${error.message}`);
+    }
+  }
 }
 
 module.exports = new SendGridService();
