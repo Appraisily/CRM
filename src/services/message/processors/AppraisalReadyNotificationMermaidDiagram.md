@@ -8,21 +8,23 @@ graph TD
     C --> D[Validate Required Data]
     D --> E[Create/Update User]
     E --> F[Update Appraisal Status]
-    F --> G[Send Notification Email]
-    G --> H[Record Email Interaction]
-    H --> I[Record User Activity]
-    I --> J[Log Success]
-    J --> K[Return Success Response]
+    F --> G[Prepare Template Data]
+    G --> H[Send Templated Email]
+    H --> I[Record Email Interaction]
+    I --> J[Record User Activity]
+    J --> K[Log Success]
+    K --> L[Return Success Response]
     
     %% Error handling
-    C -.->|Error| L[Log Error]
-    D -.->|Error| L
-    E -.->|Error| L
-    F -.->|Error| L
-    G -.->|Error| L
-    H -.->|Error| L
-    I -.->|Error| L
-    L --> M[Return Error Response]
+    C -.->|Error| M[Log Error]
+    D -.->|Error| M
+    E -.->|Error| M
+    F -.->|Error| M
+    G -.->|Error| M
+    H -.->|Error| M
+    I -.->|Error| M
+    J -.->|Error| M
+    M --> N[Return Error Response]
 ```
 
 ## Database Interactions
@@ -42,7 +44,7 @@ graph TD
     F -->|3. Insert| J[Record email interaction]
     G -->|4. Insert| K[Track user activity]
     
-    C -->|Send| L[Notification Email]
+    C -->|Send| L[SendGrid Templated Email]
 ```
 
 ## Data Flow
@@ -65,7 +67,9 @@ sequenceDiagram
     
     Processor->>DB: Update appraisal status
     
-    Processor->>Email: Send notification email
+    Processor->>Processor: Prepare template data
+    
+    Processor->>Email: Send templated email
     Email->>Processor: Return email result
     
     Processor->>DB: Record email interaction
@@ -93,25 +97,14 @@ flowchart TD
 {
   "customer": {
     "email": "customer@example.com",
-    "firstName": "John",
-    "lastName": "Doe"
+    "name": "John Doe"
   },
-  "appraisal": {
-    "id": "apr_12345",
-    "sessionId": "sess_67890",
-    "reportUrl": "https://dashboard.example.com/appraisals/apr_12345/report",
-    "type": "standard",
-    "itemDescription": "Vintage Watch",
-    "estimatedValue": "$1,500",
-    "completedDate": "2023-06-15T14:30:00.000Z",
-    "imageUrl": "https://storage.example.com/appraisal-images/item123.jpg"
-  },
-  "metadata": {
-    "origin": "web",
-    "environment": "production",
-    "timestamp": "2023-06-15T14:35:00.000Z"
-  }
+  "sessionId": "sess_67890",
+  "pdf_link": "https://example.com/appraisals/apr_12345/report.pdf",
+  "wp_link": "https://example.com/appraisals/vintage-watch-appraisal",
+  "timestamp": "2023-06-15T14:35:00.000Z",
+  "origin": "web"
 }
 ```
 
-This diagram illustrates the appraisal ready notification process flow, which updates the appraisal status in the database, sends a notification email to the customer, and records all relevant interactions. 
+This diagram illustrates the appraisal ready notification process flow, which uses a SendGrid template to notify customers when their appraisal report is ready. The processor updates the appraisal status in the database, sends a notification email, and records the relevant interactions in our tracking system. 

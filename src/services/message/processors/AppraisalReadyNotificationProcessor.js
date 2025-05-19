@@ -10,9 +10,8 @@ class AppraisalReadyNotificationProcessor {
   async process(data) {
     try {
       this.logger.info('Processing appraisal ready notification', {
-        appraisalId: data.appraisal.id,
-        sessionId: data.appraisal.sessionId,
-        timestamp: data.metadata?.timestamp
+        sessionId: data.sessionId,
+        timestamp: data.timestamp
       });
 
       // Validate required data
@@ -20,8 +19,16 @@ class AppraisalReadyNotificationProcessor {
         throw new Error('Customer email is required');
       }
 
-      if (!data.appraisal?.id) {
-        throw new Error('Appraisal ID is required');
+      if (!data.sessionId) {
+        throw new Error('Session ID is required');
+      }
+
+      if (!data.pdf_link) {
+        throw new Error('PDF link is required');
+      }
+
+      if (!data.wp_link) {
+        throw new Error('WordPress link is required');
       }
 
       // Create or get user
@@ -41,35 +48,36 @@ class AppraisalReadyNotificationProcessor {
       const appraisalUpdateResult = await databaseService.query(
         `UPDATE appraisals 
          SET status = 'completed', completed_at = NOW()
-         WHERE id = $1 OR session_id = $2
+         WHERE session_id = $1
          RETURNING id`,
-        [
-          data.appraisal.id,
-          data.appraisal.sessionId
-        ]
+        [data.sessionId]
       );
 
-      // Send notification email
-      const emailParams = {
-        customer: data.customer,
-        appraisal: {
-          id: data.appraisal.id,
-          sessionId: data.appraisal.sessionId,
-          reportUrl: data.appraisal.reportUrl || this._generateReportUrl(data.appraisal.id),
-          type: data.appraisal.type || 'standard',
-          itemDescription: data.appraisal.itemDescription || '',
-          estimatedValue: data.appraisal.estimatedValue || '',
-          completedDate: data.appraisal.completedDate || new Date().toISOString(),
-          imageUrl: data.appraisal.imageUrl || ''
-        },
-        metadata: {
-          origin: data.metadata?.origin || 'system',
-          environment: data.metadata?.environment || 'production',
-          timestamp: data.metadata?.timestamp || new Date().toISOString()
-        }
+      // Get appraisal ID if available
+      const appraisalId = appraisalUpdateResult.rows.length > 0 
+        ? appraisalUpdateResult.rows[0].id 
+        : null;
+
+      // Prepare template data
+      const templateData = {
+        customer_name: data.customer.name || 'Customer',
+        pdf_link: data.pdf_link,
+        wp_link: data.wp_link,
+        current_year: new Date().getFullYear().toString()
       };
 
-      const emailResult = await emailService.sendAppraisalReadyNotification(emailParams);
+      // Send notification email using the template
+      const emailResult = await emailService.sendTemplatedEmail({
+        to: data.customer.email,
+        templateId: process.env.SEND_GRID_TEMPLATE_NOTIFY_APPRAISAL_COMPLETED,
+        dynamicTemplateData: templateData,
+        metadata: {
+          sessionId: data.sessionId,
+          origin: data.origin || 'system',
+          timestamp: data.timestamp || new Date().toISOString()
+        }
+      });
+
       this.logger.info('Notification email sent', { messageId: emailResult.messageId });
 
       // Record email interaction
@@ -80,9 +88,9 @@ class AppraisalReadyNotificationProcessor {
          RETURNING id`,
         [
           userId,
-          'report', // Using the enum value that fits best (report)
-          emailResult.subject || 'Your Appraisal Report is Ready',
-          emailResult.content || 'Your appraisal report is now available to view.',
+          'report',
+          'Your Appraisal Report is Ready',
+          JSON.stringify(templateData), // Store template data as content
           'sent'
         ]
       );
@@ -100,12 +108,11 @@ class AppraisalReadyNotificationProcessor {
           'completed',
           {
             emailInteractionId,
-            appraisalId: data.appraisal.id,
-            sessionId: data.appraisal.sessionId,
+            appraisalId, // May be null if not found
+            sessionId: data.sessionId,
             notificationType: 'report_ready',
-            timestamp: data.metadata?.timestamp || new Date().toISOString(),
-            origin: data.metadata?.origin || 'system',
-            environment: data.metadata?.environment || 'production'
+            timestamp: data.timestamp || new Date().toISOString(),
+            origin: data.origin || 'system'
           }
         ]
       );
@@ -115,10 +122,10 @@ class AppraisalReadyNotificationProcessor {
       return {
         success: true,
         userId,
-        appraisalId: data.appraisal.id,
+        appraisalId,
         emailInteractionId,
         messageId: emailResult.messageId,
-        sessionId: data.appraisal.sessionId
+        sessionId: data.sessionId
       };
 
     } catch (error) {
@@ -126,15 +133,9 @@ class AppraisalReadyNotificationProcessor {
       return {
         success: false,
         error: error.message,
-        appraisalId: data.appraisal?.id,
-        sessionId: data.appraisal?.sessionId
+        sessionId: data.sessionId
       };
     }
-  }
-
-  // Helper to generate a report URL if not provided
-  _generateReportUrl(appraisalId) {
-    return `https://dashboard.example.com/appraisals/${appraisalId}/report`;
   }
 }
 
