@@ -1,5 +1,6 @@
 const databaseService = require('../../database');
 const Logger = require('../../../utils/logger');
+const emailResponder = require('../../agent/EmailResponder');
 
 class GmailProcessor {
   constructor() {
@@ -89,6 +90,18 @@ class GmailProcessor {
       );
 
       this.logger.success('Gmail interaction processed successfully');
+
+      // Trigger AI-driven email drafting for the newly received message
+      try {
+        if (emailResponder.initialized) {
+          await emailResponder.processIncomingEmail(data);
+        } else {
+          this.logger.info('EmailResponder not initialized, skipping draft generation');
+        }
+      } catch (draftErr) {
+        this.logger.error('Failed to generate AI draft', draftErr);
+      }
+
       return {
         success: true,
         messageId: data.email.messageId,
