@@ -11,6 +11,8 @@ const encryption = require('./src/services/encryption');
 const pubSubService = require('./src/services/pubsub');
 const messageHandler = require('./src/services/message/handler');
 const Logger = require('./src/utils/logger');
+const gmailService = require('./src/services/gmail');
+const emailResponder = require('./src/services/agent/EmailResponder');
 
 const app = express();
 const logger = new Logger('Main Service');
@@ -68,6 +70,14 @@ const init = async () => {
     // Initialize sheets service
     logger.info('Initializing sheets service');
     sheetsService.initialize(keyFilePath, secrets.SHEETS_ID_FREE_REPORTS_LOG);
+
+    // Initialize Gmail service (for drafting replies)
+    logger.info('Initializing Gmail service');
+    gmailService.initialize(keyFilePath, secrets.SENDGRID_EMAIL);
+
+    // Initialize OpenAI email responder
+    logger.info('Initializing Email Responder service');
+    emailResponder.initialize(secrets.OPENAI_API_KEY);
 
     // Initialize encryption service
     logger.info('Initializing encryption service');
